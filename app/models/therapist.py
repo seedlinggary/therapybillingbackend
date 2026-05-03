@@ -1,0 +1,60 @@
+import uuid
+from datetime import datetime
+from sqlalchemy import Column, String, DateTime, Text, Boolean, Integer, Numeric
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from app.database import Base
+
+
+class Therapist(Base):
+    __tablename__ = "therapists"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    google_sub = Column(String(255), unique=True, nullable=False, index=True)
+    picture_url = Column(String(500))
+
+    # Encrypted at rest using Fernet
+    google_access_token_enc = Column(Text)
+    google_refresh_token_enc = Column(Text)
+    google_token_expiry = Column(DateTime(timezone=True))
+    google_calendar_id = Column(String(255))
+    google_calendar_connected = Column(Boolean, default=False)
+
+    # Stripe Connect
+    stripe_account_id = Column(String(255), unique=True, index=True)
+    stripe_connected = Column(Boolean, default=False)
+
+    # Profile
+    timezone = Column(String(64), default="America/New_York")
+    phone = Column(String(32))
+    license_number = Column(String(64))
+    bio = Column(Text)
+    payment_instructions = Column(Text)  # shown on all invoices (Zelle, bank transfer, etc.)
+
+    # Country determines compliance rules: 'US' = internal, 'IL' = iCount (regulated)
+    country = Column(String(8), nullable=False, server_default='US')
+
+    # Currency: drives Stripe, invoices, and accounting
+    default_currency = Column(String(3), nullable=False, server_default='USD')
+    # USD→ILS exchange rate used for iCount when billing in USD from IL account
+    ils_exchange_rate = Column(Numeric(10, 4), server_default='3.70')
+
+    # Global default session price — copied to new client relationships; fallback for _resolve_amount
+    default_session_price = Column(Numeric(10, 2))
+
+    # Default billing schedule applied to new clients (can be overridden per-client)
+    default_billing_frequency = Column(String(32), nullable=False, server_default='same_day')
+    default_billing_anchor_day = Column(Integer)  # 0-6 for weekly, 1-28 for monthly
+
+    is_active = Column(Boolean, default=True)
+    onboarding_completed = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    therapist_clients = relationship("TherapistClient", back_populates="therapist", cascade="all, delete-orphan")
+    appointments = relationship("Appointment", back_populates="therapist")
+    invoices = relationship("Invoice", back_populates="therapist")
+    recurrence_rules = relationship("RecurrenceRule", back_populates="therapist")
