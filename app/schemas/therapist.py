@@ -23,6 +23,8 @@ class TherapistProfile(BaseModel):
     google_calendar_connected: bool
     stripe_connected: bool
     onboarding_completed: bool
+    payment_provider: str = "stripe"
+    payme_seller_id: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -42,6 +44,9 @@ class TherapistUpdate(BaseModel):
     default_session_price: Optional[float] = None
     default_billing_frequency: Optional[str] = None
     default_billing_anchor_day: Optional[int] = None
+    payment_provider: Optional[str] = None
+    payme_seller_id: Optional[str] = None
+    payme_api_key: Optional[str] = None
 
 
 class TherapistOnboardingStatus(BaseModel):

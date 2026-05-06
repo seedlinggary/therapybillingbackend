@@ -22,9 +22,16 @@ class Therapist(Base):
     google_calendar_id = Column(String(255))
     google_calendar_connected = Column(Boolean, default=False)
 
+    # Active payment provider: 'stripe' | 'payme'
+    payment_provider = Column(String(32), nullable=False, server_default='stripe')
+
     # Stripe Connect
     stripe_account_id = Column(String(255), unique=True, index=True)
-    stripe_connected = Column(Boolean, default=False)
+    stripe_connected  = Column(Boolean, default=False)
+
+    # PayMe credentials (store api_key encrypted in production)
+    payme_seller_id = Column(String(255))
+    payme_api_key   = Column(Text)
 
     # Profile
     timezone = Column(String(64), default="America/New_York")

@@ -186,6 +186,36 @@ def stripe_manual_connect(
     return {"stripe_connected": True, "account_id": account_id}
 
 
+class PayMeConnectRequest(BaseModel):
+    seller_id: str
+    api_key: str
+
+
+@router.post("/payme/connect", response_model=TherapistProfile)
+def payme_connect(
+    body: PayMeConnectRequest,
+    therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    therapist.payme_seller_id = body.seller_id.strip()
+    therapist.payme_api_key = body.api_key.strip()
+    therapist.payment_provider = "payme"
+    db.commit()
+    db.refresh(therapist)
+    return therapist
+
+
+@router.delete("/payme", status_code=204)
+def disconnect_payme(
+    therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    therapist.payme_seller_id = None
+    therapist.payme_api_key = None
+    therapist.payment_provider = "stripe"
+    db.commit()
+
+
 @router.delete("/google-calendar", status_code=204)
 def disconnect_google_calendar(
     therapist: Therapist = Depends(get_current_therapist),
@@ -212,5 +242,5 @@ def disconnect_stripe(
 
 
 def _check_onboarding_complete(therapist: Therapist):
-    if therapist.google_calendar_connected and therapist.stripe_connected:
+    if therapist.google_calendar_connected:
         therapist.onboarding_completed = True

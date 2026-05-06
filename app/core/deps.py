@@ -6,6 +6,7 @@ from app.database import get_db
 from app.core.security import decode_token
 from app.models.therapist import Therapist
 from app.models.client import Client
+from app.models.admin_user import AdminUser
 import uuid
 
 bearer_scheme = HTTPBearer()
@@ -40,6 +41,18 @@ def get_current_client(
     if not client or not client.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Client not found")
     return client
+
+
+def get_current_admin(
+    token_data: dict = Depends(_get_token_data),
+    db: Session = Depends(get_db),
+) -> AdminUser:
+    if token_data.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    admin = db.query(AdminUser).filter(AdminUser.id == uuid.UUID(token_data["sub"])).first()
+    if not admin or not admin.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin not found")
+    return admin
 
 
 def get_current_user(

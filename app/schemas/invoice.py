@@ -30,7 +30,9 @@ class InvoiceResponse(BaseModel):
     status: str
     due_date: datetime
     paid_at: Optional[datetime] = None
-    stripe_payment_link: Optional[str] = None
+    payment_provider: str = "stripe"
+    payment_link: Optional[str] = None          # provider-agnostic — use this in UI
+    stripe_payment_link: Optional[str] = None   # kept for backward compat
     created_at: datetime
 
     class Config:

@@ -16,6 +16,7 @@ from app.core.security import (
 )
 from app.models.therapist import Therapist
 from app.models.client import Client
+from app.models.admin_user import AdminUser
 from app.schemas.client import ClientLogin, ClientRegister, ActivateAccount, TokenResponse, ForgotPassword, ResetPassword
 from app.services.google_oauth import get_therapist_login_flow, exchange_code, get_user_info
 from app.services.email_service import send_password_reset_email
@@ -208,6 +209,18 @@ def client_reset_password(data: ResetPassword, db: Session = Depends(get_db)):
     client.reset_token_expires = None
     db.commit()
     return {"message": "Password reset successfully"}
+
+
+@router.post("/admin/login", response_model=TokenResponse)
+def admin_login(data: ClientLogin, db: Session = Depends(get_db)):
+    admin = db.query(AdminUser).filter(AdminUser.email == data.email).first()
+    if not admin or not verify_password(data.password, admin.hashed_password or ""):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not admin.is_active:
+        raise HTTPException(status_code=403, detail="Account disabled")
+    access_token = create_access_token(str(admin.id), "admin")
+    refresh_token = create_refresh_token(str(admin.id), "admin")
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token, role="admin")
 
 
 @router.post("/refresh", response_model=TokenResponse)

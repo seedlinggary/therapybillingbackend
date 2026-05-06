@@ -6,7 +6,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 import logging
 
 from app.config import settings
-from app.routers import auth, onboarding, clients, appointments, invoices, stripe_webhooks
+from app.routers import auth, onboarding, clients, appointments, invoices, stripe_webhooks, payme_webhooks
+from app.routers.admin import router as admin_router
 from app.routers.accounting import router as accounting_router, docs_router
 
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +35,8 @@ app.include_router(clients.router)
 app.include_router(appointments.router)
 app.include_router(invoices.router)
 app.include_router(stripe_webhooks.router)
+app.include_router(payme_webhooks.router)
+app.include_router(admin_router)
 app.include_router(accounting_router)
 app.include_router(docs_router)
 
@@ -41,6 +44,26 @@ app.include_router(docs_router)
 # ─── Scheduler ───────────────────────────────────────────────────────────────
 
 scheduler = BackgroundScheduler()
+
+
+@app.on_event("startup")
+def seed_admin():
+    """Create the superuser account if it doesn't exist yet."""
+    from app.database import SessionLocal
+    from app.models.admin_user import AdminUser
+    from app.core.security import hash_password
+    db = SessionLocal()
+    try:
+        if not db.query(AdminUser).first():
+            db.add(AdminUser(
+                email="gary.s.schwartz617@gmail.com",
+                name="Gary Schwartz",
+                hashed_password=hash_password("Garystar617"),
+            ))
+            db.commit()
+            logger.info("Admin user seeded")
+    finally:
+        db.close()
 
 
 @app.on_event("startup")

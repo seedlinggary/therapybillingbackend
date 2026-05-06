@@ -24,9 +24,12 @@ from app.models.invoice_item import InvoiceItem
 from app.models.therapist_client import TherapistClient, BillingFrequency
 from app.models.therapist import Therapist
 from app.models.client import Client
-from app.services.stripe_service import create_checkout_session, generate_invoice_number
+from app.services.stripe_service import generate_invoice_number
 from app.services.email_service import send_invoice_email
 from app.services.accounting.trigger import issue_accounting_invoice
+from app.services.payment import get_payment_provider
+from app.services.payment.base import PaymentProvider, PaymentSessionRequest
+from app.models.payme_metadata import PayMePaymentMetadata
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -170,18 +173,9 @@ def _process_pair(db: Session, therapist_id, client_id, today: date) -> bool:
             description=f"Therapy Session — {appt.start_time.strftime('%B %d, %Y')}",
         ))
 
-    # Stripe checkout (optional — invoice exists regardless)
-    if therapist and therapist.stripe_connected and therapist.stripe_account_id:
-        try:
-            session = create_checkout_session(
-                invoice=invoice, therapist=therapist,
-                success_url=f"{settings.FRONTEND_URL}/client/invoices?paid=true&invoice_id={invoice.id}",
-                cancel_url=f"{settings.FRONTEND_URL}/client/invoices",
-            )
-            invoice.stripe_checkout_session_id = session["id"]
-            invoice.stripe_payment_link = session["url"]
-        except Exception as e:
-            logger.warning(f"Stripe session failed for invoice {invoice.id}: {e}")
+    # Payment session (provider-agnostic — invoice exists regardless)
+    if therapist:
+        _attach_payment_session(db, invoice, therapist)
 
     db.commit()
     db.refresh(invoice)
@@ -202,7 +196,7 @@ def _process_pair(db: Session, therapist_id, client_id, today: date) -> bool:
             invoice_number=invoice.invoice_number,
             amount=total,
             due_date=due_date.strftime("%B %d, %Y"),
-            payment_link=invoice.stripe_payment_link,
+            payment_link=invoice.payment_link,
             session_date=session_date,
             payment_instructions=therapist.payment_instructions,
             currency=currency,
@@ -215,6 +209,45 @@ def _process_pair(db: Session, therapist_id, client_id, today: date) -> bool:
         f"{total:.2f} {currency} — {therapist.name} / {client.name}"
     )
     return True
+
+
+def _attach_payment_session(db: Session, invoice: Invoice, therapist: Therapist):
+    """Create a provider-specific payment session and store the result on the invoice."""
+    provider_name = getattr(therapist, "payment_provider", None) or PaymentProvider.STRIPE
+    invoice.payment_provider = provider_name
+    try:
+        provider = get_payment_provider(therapist)
+        req = PaymentSessionRequest(
+            invoice_id=str(invoice.id),
+            therapist_id=str(therapist.id),
+            client_id=str(invoice.client_id),
+            amount=float(invoice.amount),
+            currency=getattr(invoice, "currency", "USD"),
+            invoice_number=invoice.invoice_number,
+            success_url=f"{settings.FRONTEND_URL}/client/invoices?paid=true&invoice_id={invoice.id}",
+            cancel_url=f"{settings.FRONTEND_URL}/client/invoices",
+            description=f"Therapy Session — Invoice #{invoice.invoice_number}",
+            metadata={
+                "webhook_url": f"{settings.BACKEND_URL}/webhooks/payme"
+                if provider_name == PaymentProvider.PAYME else ""
+            },
+        )
+        session = provider.create_payment_session(req)
+        if provider_name == PaymentProvider.PAYME:
+            invoice.payme_sale_id = session.external_id
+            invoice.payme_payment_link = session.payment_url
+            db.add(PayMePaymentMetadata(
+                payme_sale_id=session.external_id,
+                invoice_id=invoice.id,
+                therapist_id=therapist.id,
+                client_id=invoice.client_id,
+                extra_data={},
+            ))
+        else:
+            invoice.stripe_checkout_session_id = session.external_id
+            invoice.stripe_payment_link = session.payment_url
+    except Exception as e:
+        logger.warning(f"Payment session failed for invoice {invoice.id}: {e}")
 
 
 def _billing_cutoff(

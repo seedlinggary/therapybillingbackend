@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str
     STRIPE_CONNECT_REDIRECT_URI: str = "http://localhost:8000/onboarding/stripe/callback"
     FRONTEND_URL: str = "http://localhost:3000"
+    BACKEND_URL:  str = "http://localhost:8000"
+
+    # PayMe (payme.co.il)
+    PAYME_API_BASE_URL: str = "https://ng.payme.co.il/api/v2"
 
     # Email
     RESEND_API_KEY: str
