@@ -186,6 +186,20 @@ def stripe_manual_connect(
     return {"stripe_connected": True, "account_id": account_id}
 
 
+@router.get("/exchange-rate")
+def get_exchange_rate(
+    from_currency: str = "USD",
+    to_currency: str = "ILS",
+    _: Therapist = Depends(get_current_therapist),
+):
+    """Return the live exchange rate between two currencies."""
+    from app.services.exchange_rate import get_rate
+    rate = get_rate(from_currency, to_currency)
+    if rate is None:
+        raise HTTPException(status_code=503, detail="Exchange rate service unavailable")
+    return {"from": from_currency.upper(), "to": to_currency.upper(), "rate": rate}
+
+
 class PayMeConnectRequest(BaseModel):
     seller_id: str
     api_key: str

@@ -21,6 +21,7 @@ from app.schemas.invoice import InvoiceResponse, InvoiceItemResponse, InvoiceCre
 from app.services.stripe_service import generate_invoice_number
 from app.services.pdf_service import generate_invoice_pdf
 from app.services.email_service import send_invoice_email
+from app.services.exchange_rate import build_conversion_note
 from app.services.accounting.trigger import issue_accounting_receipt, issue_accounting_invoice
 from app.services.payment import get_payment_provider
 from app.services.payment.base import PaymentProvider, PaymentSessionRequest
@@ -173,7 +174,7 @@ def create_invoice(
         TherapistClient.client_id == appt.client_id,
     ).first()
     amount = _resolve_amount(appt, rel, therapist)
-    due_date = data.due_date or datetime.utcnow() + timedelta(days=30)
+    due_date = data.due_date or datetime.utcnow() + timedelta(days=7)
     currency = getattr(therapist, "default_currency", None) or "USD"
 
     invoice = Invoice(
@@ -200,6 +201,12 @@ def create_invoice(
     db.refresh(invoice)
 
     try:
+        other_currency = "ILS" if currency == "USD" else "USD"
+        conversion_note = (
+            build_conversion_note(amount, currency, other_currency)
+            if getattr(therapist, "show_conversion_note", False)
+            else None
+        )
         send_invoice_email(
             client_email=appt.client.email, client_name=appt.client.name,
             therapist_name=therapist.name,
@@ -209,6 +216,7 @@ def create_invoice(
             session_date=appt.start_time.strftime("%B %d, %Y"),
             payment_instructions=therapist.payment_instructions,
             currency=currency,
+            conversion_note=conversion_note,
         )
     except Exception:
         pass
@@ -245,7 +253,7 @@ def bill_now(
         TherapistClient.client_id == appt.client_id,
     ).first()
     amount = _resolve_amount(appt, rel, therapist)
-    due_date = datetime.utcnow() + timedelta(days=30)
+    due_date = datetime.utcnow() + timedelta(days=7)
     currency = getattr(therapist, "default_currency", None) or "USD"
 
     invoice = Invoice(
@@ -272,6 +280,12 @@ def bill_now(
     db.refresh(invoice)
 
     try:
+        other_currency = "ILS" if currency == "USD" else "USD"
+        conversion_note = (
+            build_conversion_note(amount, currency, other_currency)
+            if getattr(therapist, "show_conversion_note", False)
+            else None
+        )
         send_invoice_email(
             client_email=appt.client.email, client_name=appt.client.name,
             therapist_name=therapist.name,
@@ -281,6 +295,7 @@ def bill_now(
             session_date=appt.start_time.strftime("%B %d, %Y"),
             payment_instructions=therapist.payment_instructions,
             currency=currency,
+            conversion_note=conversion_note,
         )
     except Exception:
         pass
@@ -598,19 +613,11 @@ def get_payment_link(
         raise HTTPException(status_code=404, detail="Invoice not found")
     if invoice.status == InvoiceStatus.PAID:
         raise HTTPException(status_code=400, detail="Invoice already paid")
-    if not invoice.stripe_payment_link:
+    if not invoice.payment_link:
         therapist = invoice.therapist
-        if not therapist.stripe_connected:
-            raise HTTPException(status_code=400, detail="Therapist has not connected Stripe")
-        session = create_checkout_session(
-            invoice=invoice, therapist=therapist,
-            success_url=f"{settings.FRONTEND_URL}/client/invoices?paid=true&invoice_id={invoice.id}",
-            cancel_url=f"{settings.FRONTEND_URL}/client/invoices",
-        )
-        invoice.stripe_checkout_session_id = session["id"]
-        invoice.stripe_payment_link = session["url"]
+        _attach_payment_session(db, invoice, therapist)
         db.commit()
-    return {"payment_url": invoice.stripe_payment_link}
+    return {"payment_url": invoice.payment_link}
 
 
 # ─── PDF download (both roles) ────────────────────────────────────────────────

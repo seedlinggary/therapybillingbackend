@@ -70,6 +70,11 @@ class TherapistClientDetail(BaseModel):
 
 
 class TherapistClientUpdate(BaseModel):
+    # Client record fields
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    # Relationship fields
     default_session_price: Optional[float] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None

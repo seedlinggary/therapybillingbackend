@@ -55,6 +55,8 @@ class Therapist(Base):
     default_billing_frequency = Column(String(32), nullable=False, server_default='same_day')
     default_billing_anchor_day = Column(Integer)  # 0-6 for weekly, 1-28 for monthly
 
+    show_conversion_note = Column(Boolean, nullable=False, server_default='false')
+
     is_active = Column(Boolean, default=True)
     onboarding_completed = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)

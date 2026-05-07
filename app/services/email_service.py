@@ -50,6 +50,48 @@ def send_appointment_confirmation(
     _send(client_email, f"Appointment confirmed with {therapist_name}", html)
 
 
+def send_recurring_appointment_confirmation(
+    client_email: str,
+    client_name: str,
+    therapist_name: str,
+    recurrence_type: str,        # weekly / biweekly / monthly / daily
+    start_date: str,             # human-readable first date
+    end_date: str,               # human-readable last date or "ongoing"
+    session_count: int,
+    day_of_week: str,            # e.g. "Tuesday"
+    time_of_day: str,            # e.g. "3:00 PM"
+    session_type: str,
+):
+    freq_label = {
+        "weekly": "weekly", "biweekly": "every two weeks",
+        "monthly": "monthly", "daily": "daily",
+    }.get(recurrence_type, recurrence_type)
+
+    html = f"""
+    <h2>Recurring Appointments Scheduled</h2>
+    <p>Hi {client_name},</p>
+    <p><strong>{therapist_name}</strong> has scheduled a series of {session_type} sessions for you.</p>
+    <table style="border-collapse:collapse;width:100%;max-width:420px;margin:16px 0">
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Frequency</strong></td>
+            <td style="padding:8px;border:1px solid #e5e7eb">Every {freq_label}, on {day_of_week}s</td></tr>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Time</strong></td>
+            <td style="padding:8px;border:1px solid #e5e7eb">{time_of_day}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>First session</strong></td>
+            <td style="padding:8px;border:1px solid #e5e7eb">{start_date}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Last session</strong></td>
+            <td style="padding:8px;border:1px solid #e5e7eb">{end_date}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Total sessions</strong></td>
+            <td style="padding:8px;border:1px solid #e5e7eb">{session_count}</td></tr>
+    </table>
+    <p>You can view all your upcoming sessions at <a href="{settings.FRONTEND_URL}/client/sessions">your dashboard</a>.</p>
+    """
+    _send(
+        client_email,
+        f"Recurring {session_type} sessions confirmed with {therapist_name}",
+        html,
+    )
+
+
 def send_appointment_cancellation(
     client_email: str,
     client_name: str,
@@ -91,6 +133,7 @@ def send_invoice_email(
     session_date: str,
     payment_instructions: Optional[str] = None,
     currency: str = "USD",
+    conversion_note: Optional[str] = None,
 ):
     symbol = "₪" if currency == "ILS" else "$"
     pay_button = ""
@@ -110,6 +153,14 @@ def send_invoice_email(
         </div>
         """
 
+    conversion_html = ""
+    if conversion_note:
+        conversion_html = f"""
+        <div style="margin-top:16px;padding:12px 16px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0">
+            <p style="margin:0;color:#166534;font-size:13px">💱 {conversion_note}</p>
+        </div>
+        """
+
     html = f"""
     <h2>Invoice #{invoice_number}</h2>
     <p>Hi {client_name},</p>
@@ -121,6 +172,7 @@ def send_invoice_email(
     </table>
     {pay_button}
     {payment_instructions_html}
+    {conversion_html}
     <p style="margin-top:16px">You can also view and download your invoices at <a href="{settings.FRONTEND_URL}/client/invoices">your dashboard</a>.</p>
     """
     _send(client_email, f"Invoice #{invoice_number} from {therapist_name} - {symbol}{amount:.2f}", html)

@@ -20,7 +20,10 @@ from app.schemas.appointment import (
     AppointmentResponse, RecurringAppointmentCreate,
 )
 from app.services import google_calendar
-from app.services.email_service import send_appointment_confirmation, send_appointment_cancellation
+from app.services.email_service import (
+    send_appointment_confirmation, send_appointment_cancellation,
+    send_recurring_appointment_confirmation,
+)
 
 router = APIRouter(tags=["appointments"])
 
@@ -228,6 +231,30 @@ def create_recurring_appointments(
         db.refresh(appt)
         appt.client = client
         appt.therapist = therapist
+
+    # One summary email for the whole series
+    try:
+        first = appointments[0].start_time
+        last  = appointments[-1].start_time
+        tz    = ZoneInfo(therapist.timezone or "America/New_York")
+        day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+        day_name  = day_names[first.astimezone(tz).weekday()]
+        time_str  = first.astimezone(tz).strftime("%-I:%M %p")
+        end_str   = last.astimezone(tz).strftime("%B %d, %Y") if data.end_date else "ongoing"
+        send_recurring_appointment_confirmation(
+            client_email=client.email,
+            client_name=client.name,
+            therapist_name=therapist.name,
+            recurrence_type=data.recurrence_type,
+            start_date=first.astimezone(tz).strftime("%B %d, %Y"),
+            end_date=end_str,
+            session_count=len(appointments),
+            day_of_week=day_name,
+            time_of_day=time_str,
+            session_type=data.session_type or "therapy",
+        )
+    except Exception:
+        pass
 
     return [_build_response(a, db) for a in appointments]
 

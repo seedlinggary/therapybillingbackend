@@ -30,6 +30,7 @@ from app.services.accounting.trigger import issue_accounting_invoice
 from app.services.payment import get_payment_provider
 from app.services.payment.base import PaymentProvider, PaymentSessionRequest
 from app.models.payme_metadata import PayMePaymentMetadata
+from app.services.exchange_rate import build_conversion_note
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -148,7 +149,7 @@ def _process_pair(db: Session, therapist_id, client_id, today: date) -> bool:
         items_data.append((appt, amt))
 
     currency = getattr(therapist, "default_currency", None) or "USD"
-    due_date = datetime.utcnow() + timedelta(days=30)
+    due_date = datetime.utcnow() + timedelta(days=7)
 
     # Use appointment_id of the first (earliest) appointment for the invoice header
     first_appt = appointments[0]
@@ -189,6 +190,12 @@ def _process_pair(db: Session, therapist_id, client_id, today: date) -> bool:
         if len(appointments) > 1:
             last = appointments[-1].start_time.strftime("%B %d, %Y")
             session_date = f"{session_date} – {last} ({len(appointments)} sessions)"
+        other_currency = "ILS" if currency == "USD" else "USD"
+        conversion_note = (
+            build_conversion_note(total, currency, other_currency)
+            if getattr(therapist, "show_conversion_note", False)
+            else None
+        )
         send_invoice_email(
             client_email=client.email,
             client_name=client.name,
@@ -200,6 +207,7 @@ def _process_pair(db: Session, therapist_id, client_id, today: date) -> bool:
             session_date=session_date,
             payment_instructions=therapist.payment_instructions,
             currency=currency,
+            conversion_note=conversion_note,
         )
     except Exception as e:
         logger.warning(f"Email failed for invoice {invoice.id}: {e}")

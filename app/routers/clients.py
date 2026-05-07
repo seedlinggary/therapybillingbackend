@@ -117,11 +117,27 @@ def update_client(
     db: Session = Depends(get_db),
 ):
     rel = _get_relationship_or_404(db, therapist.id, client_id)
-    for field, value in data.model_dump(exclude_none=True).items():
-        setattr(rel, field, value)
+    client = rel.client
+
+    # Split fields: some go to the Client record, rest go to the relationship
+    client_fields = {"name", "email", "phone"}
+    patch = data.model_dump(exclude_none=True)
+
+    if "email" in patch and patch["email"] != client.email:
+        clash = db.query(Client).filter(Client.email == patch["email"], Client.id != client.id).first()
+        if clash:
+            raise HTTPException(status_code=409, detail="That email is already used by another client")
+
+    for field, value in patch.items():
+        if field in client_fields:
+            setattr(client, field, value)
+        else:
+            setattr(rel, field, value)
+
     db.commit()
     db.refresh(rel)
-    return _build_detail(rel, rel.client)
+    db.refresh(client)
+    return _build_detail(rel, client)
 
 
 @router.patch("/therapist/clients/{client_id}/billing", response_model=TherapistClientDetail)
