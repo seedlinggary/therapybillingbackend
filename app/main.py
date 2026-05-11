@@ -6,7 +6,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 import logging
 
 from app.config import settings
-from app.routers import auth, onboarding, clients, appointments, invoices, stripe_webhooks, payme_webhooks
+from app.routers import auth, onboarding, clients, appointments, invoices, stripe_webhooks, payme_webhooks, paypal_webhooks
 from app.routers.admin import router as admin_router
 from app.routers.accounting import router as accounting_router, docs_router
 
@@ -36,6 +36,7 @@ app.include_router(appointments.router)
 app.include_router(invoices.router)
 app.include_router(stripe_webhooks.router)
 app.include_router(payme_webhooks.router)
+app.include_router(paypal_webhooks.router)
 app.include_router(admin_router)
 app.include_router(accounting_router)
 app.include_router(docs_router)

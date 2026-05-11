@@ -25,6 +25,8 @@ class TherapistProfile(BaseModel):
     onboarding_completed: bool
     payment_provider: str = "stripe"
     payme_seller_id: Optional[str] = None
+    paypal_email: Optional[str] = None
+    paypal_connected: bool = False
     show_conversion_note: bool = False
     created_at: datetime
 
@@ -48,6 +50,8 @@ class TherapistUpdate(BaseModel):
     payment_provider: Optional[str] = None
     payme_seller_id: Optional[str] = None
     payme_api_key: Optional[str] = None
+    paypal_email: Optional[str] = None
+    paypal_connected: Optional[bool] = None
     show_conversion_note: Optional[bool] = None
 
 

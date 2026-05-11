@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 import secrets
 
 
@@ -29,6 +29,12 @@ class Settings(BaseSettings):
 
     # PayMe (payme.co.il)
     PAYME_API_BASE_URL: str = "https://ng.payme.co.il/api/v2"
+
+    # PayPal (all optional — app works without these set)
+    PAYPAL_CLIENT_ID: Optional[str] = None
+    PAYPAL_CLIENT_SECRET: Optional[str] = None
+    PAYPAL_WEBHOOK_ID: Optional[str] = None
+    PAYPAL_BASE_URL: str = "https://api-m.sandbox.paypal.com"  # swap to api-m.paypal.com in prod
 
     # Email
     RESEND_API_KEY: str

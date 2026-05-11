@@ -22,7 +22,7 @@ class Therapist(Base):
     google_calendar_id = Column(String(255))
     google_calendar_connected = Column(Boolean, default=False)
 
-    # Active payment provider: 'stripe' | 'payme'
+    # Active payment provider: 'stripe' | 'payme' | 'paypal'
     payment_provider = Column(String(32), nullable=False, server_default='stripe')
 
     # Stripe Connect
@@ -32,6 +32,10 @@ class Therapist(Base):
     # PayMe credentials (store api_key encrypted in production)
     payme_seller_id = Column(String(255))
     payme_api_key   = Column(Text)
+
+    # PayPal credentials
+    paypal_email     = Column(String(255))
+    paypal_connected = Column(Boolean, default=False)
 
     # Profile
     timezone = Column(String(64), default="America/New_York")

@@ -41,6 +41,10 @@ class Invoice(Base):
     payme_sale_id      = Column(String(255), index=True)
     payme_payment_link = Column(Text)
 
+    # PayPal-specific
+    paypal_order_id      = Column(String(255), index=True)
+    paypal_payment_link  = Column(Text)
+
     # PDF
     pdf_path = Column(String(500))
     notes    = Column(Text)
@@ -63,4 +67,4 @@ class Invoice(Base):
     @property
     def payment_link(self) -> str | None:
         """Provider-agnostic payment URL."""
-        return self.payme_payment_link or self.stripe_payment_link
+        return self.payme_payment_link or self.paypal_payment_link or self.stripe_payment_link

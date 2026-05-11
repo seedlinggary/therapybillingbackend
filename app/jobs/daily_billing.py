@@ -251,6 +251,9 @@ def _attach_payment_session(db: Session, invoice: Invoice, therapist: Therapist)
                 client_id=invoice.client_id,
                 extra_data={},
             ))
+        elif provider_name == PaymentProvider.PAYPAL:
+            invoice.paypal_order_id     = session.external_id
+            invoice.paypal_payment_link = session.payment_url
         else:
             invoice.stripe_checkout_session_id = session.external_id
             invoice.stripe_payment_link = session.payment_url

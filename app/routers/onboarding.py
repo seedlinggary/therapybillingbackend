@@ -230,6 +230,38 @@ def disconnect_payme(
     db.commit()
 
 
+class PayPalConnectRequest(BaseModel):
+    paypal_email: str
+
+
+@router.post("/paypal/connect", response_model=TherapistProfile)
+def paypal_connect(
+    body: PayPalConnectRequest,
+    therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    email = body.paypal_email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid PayPal email address")
+    therapist.paypal_email = email
+    therapist.paypal_connected = True
+    therapist.payment_provider = "paypal"
+    db.commit()
+    db.refresh(therapist)
+    return therapist
+
+
+@router.delete("/paypal", status_code=204)
+def disconnect_paypal(
+    therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    therapist.paypal_email = None
+    therapist.paypal_connected = False
+    therapist.payment_provider = "stripe"
+    db.commit()
+
+
 @router.delete("/google-calendar", status_code=204)
 def disconnect_google_calendar(
     therapist: Therapist = Depends(get_current_therapist),

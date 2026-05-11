@@ -22,6 +22,7 @@ class PaymentStatus:
 class PaymentProvider:
     STRIPE = "stripe"
     PAYME  = "payme"
+    PAYPAL = "paypal"
 
 
 @dataclass
