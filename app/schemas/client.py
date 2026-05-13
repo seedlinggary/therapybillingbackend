@@ -30,6 +30,7 @@ class ClientCreate(BaseModel):
     default_session_price: float
     phone: Optional[str] = None
     notes: Optional[str] = None
+    tax_exempt: bool = False
 
 
 class ClientUpdate(BaseModel):
@@ -63,6 +64,7 @@ class TherapistClientDetail(BaseModel):
     client_is_active: bool
     billing_frequency: str = "same_day"
     billing_anchor_day: Optional[int] = None
+    tax_exempt: bool = False
     created_at: datetime
 
     class Config:
@@ -78,11 +80,13 @@ class TherapistClientUpdate(BaseModel):
     default_session_price: Optional[float] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+    tax_exempt: Optional[bool] = None
 
 
 class TherapistClientBillingUpdate(BaseModel):
     billing_frequency: Optional[str] = None
     billing_anchor_day: Optional[int] = None
+    tax_exempt: Optional[bool] = None
 
 
 class ForgotPassword(BaseModel):

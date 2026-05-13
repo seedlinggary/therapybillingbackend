@@ -34,6 +34,7 @@ def _build_detail(rel: TherapistClient, client: Client) -> TherapistClientDetail
         client_is_active=client.is_active,
         billing_frequency=rel.billing_frequency,
         billing_anchor_day=rel.billing_anchor_day,
+        tax_exempt=rel.tax_exempt,
         created_at=rel.created_at,
     )
 
@@ -91,6 +92,7 @@ def create_client(
         notes=data.notes,
         billing_frequency=therapist.default_billing_frequency or "same_day",
         billing_anchor_day=therapist.default_billing_anchor_day,
+        tax_exempt=data.tax_exempt,
     )
     db.add(rel)
     db.commit()

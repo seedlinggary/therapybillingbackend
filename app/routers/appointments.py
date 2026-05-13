@@ -3,7 +3,7 @@ Appointments CRUD — therapist-scoped with Google Calendar integration.
 """
 import calendar as cal_mod
 from typing import List, Optional
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
@@ -63,6 +63,7 @@ def _build_response(appt: Appointment, db: Session) -> AppointmentResponse:
         has_invoice=has_invoice,
         billed=appt.billed,
         recurrence_id=appt.recurrence_id,
+        tax_exempt=appt.tax_exempt,
         created_at=appt.created_at,
     )
 
@@ -98,6 +99,7 @@ def create_appointment(
 
     client = db.query(Client).filter(Client.id == data.client_id).first()
 
+    appt_tax_exempt = data.tax_exempt if data.tax_exempt is not None else rel.tax_exempt
     appt = Appointment(
         therapist_id=therapist.id,
         client_id=data.client_id,
@@ -106,6 +108,7 @@ def create_appointment(
         session_type=data.session_type,
         override_price=data.override_price,
         session_notes=data.session_notes,
+        tax_exempt=appt_tax_exempt,
         status=AppointmentStatus.SCHEDULED,
         billed=False,
     )
@@ -129,11 +132,14 @@ def create_appointment(
     db.refresh(appt)
 
     try:
+        _tz = ZoneInfo(therapist.timezone or "America/New_York")
+        _s = (data.start_time if data.start_time.tzinfo else data.start_time.replace(tzinfo=dt_timezone.utc)).astimezone(_tz)
+        _e = (data.end_time   if data.end_time.tzinfo   else data.end_time.replace(tzinfo=dt_timezone.utc)).astimezone(_tz)
         send_appointment_confirmation(
             client_email=client.email, client_name=client.name,
             therapist_name=therapist.name,
-            start_time=data.start_time.strftime("%B %d, %Y at %I:%M %p"),
-            end_time=data.end_time.strftime("%I:%M %p"),
+            start_time=_s.strftime("%B %d, %Y at %-I:%M %p"),
+            end_time=_e.strftime("%-I:%M %p"),
             session_type=data.session_type,
         )
     except Exception:
@@ -202,6 +208,7 @@ def create_recurring_appointments(
             end_time=end_local,
             session_type=data.session_type,
             override_price=data.override_price,
+            tax_exempt=data.tax_exempt if data.tax_exempt is not None else rel.tax_exempt,
             status=AppointmentStatus.SCHEDULED,
             billed=False,
         )
@@ -407,10 +414,12 @@ def update_appointment_status(
 
     if data.status == AppointmentStatus.CANCELED:
         try:
+            _tz = ZoneInfo(therapist.timezone or "America/New_York")
+            _s = (appt.start_time if appt.start_time.tzinfo else appt.start_time.replace(tzinfo=dt_timezone.utc)).astimezone(_tz)
             send_appointment_cancellation(
                 client_email=appt.client.email, client_name=appt.client.name,
                 therapist_name=therapist.name,
-                start_time=appt.start_time.strftime("%B %d, %Y at %I:%M %p"),
+                start_time=_s.strftime("%B %d, %Y at %-I:%M %p"),
                 reason=data.cancellation_reason,
             )
         except Exception:

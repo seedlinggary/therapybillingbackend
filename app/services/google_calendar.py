@@ -94,7 +94,9 @@ def create_calendar_event(
         },
     }
 
-    return service.events().insert(calendarId=calendar_id, body=event, sendUpdates="all").execute()
+    # sendUpdates="none" — the app's own email handles client notifications.
+    # "all" would spam clients with a separate Google invite per recurring session.
+    return service.events().insert(calendarId=calendar_id, body=event, sendUpdates="none").execute()
 
 
 def update_calendar_event(

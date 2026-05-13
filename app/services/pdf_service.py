@@ -23,7 +23,9 @@ def generate_invoice_pdf(
     paid_at: Optional[str] = None,
     invoice_id: Optional[str] = None,
     payment_instructions: Optional[str] = None,
+    currency: str = "USD",
 ) -> bytes:
+    sym = "ILS " if currency == "ILS" else "$"
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=letter,
@@ -86,7 +88,7 @@ def generate_invoice_pdf(
             Paragraph(item["description"], styles["Normal"]),
             Paragraph(item["date"], styles["Normal"]),
             Paragraph(item["session_type"], styles["Normal"]),
-            Paragraph(f"${item['amount']:.2f}", styles["Normal"]),
+            Paragraph(f"{sym}{item['amount']:.2f}", styles["Normal"]),
         ])
 
     services_table = Table(services_data, colWidths=[3 * inch, 1.5 * inch, 1.5 * inch, 1 * inch])
@@ -106,7 +108,7 @@ def generate_invoice_pdf(
     # Total
     total_data = [
         ["", "", Paragraph("<b>TOTAL</b>", styles["Normal"]),
-         Paragraph(f"<b>${amount:.2f}</b>", styles["Normal"])],
+         Paragraph(f"<b>{sym}{amount:.2f}</b>", styles["Normal"])],
     ]
     if status == "paid" and paid_at:
         total_data.append(["", "",

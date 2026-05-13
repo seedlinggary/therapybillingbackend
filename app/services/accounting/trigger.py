@@ -13,8 +13,30 @@ from app.models.accounting_document import AccountingDocument, DocumentStatus, D
 from app.models.audit_log import AuditLog
 from app.models.retry_job import RetryJob
 from app.models.therapist import Therapist
+from app.models.therapist_client import TherapistClient
 from .factory import get_accounting_service
 from .base import DocumentPayload
+
+IL_VAT_RATE = 0.18
+
+
+def _client_vat_rate(invoice: Invoice, db: Session) -> float:
+    """
+    Return 0.0 (exempt) or IL_VAT_RATE.
+    Appointment-level tax_exempt takes precedence over client default.
+    """
+    # Single-appointment invoice: use the appointment's explicit setting if present
+    if invoice.appointment is not None and invoice.appointment.tax_exempt is not None:
+        return 0.0 if invoice.appointment.tax_exempt else IL_VAT_RATE
+
+    # Fall back to the client's default on the therapist-client relationship
+    rel = db.query(TherapistClient).filter(
+        TherapistClient.therapist_id == invoice.therapist_id,
+        TherapistClient.client_id == invoice.client_id,
+    ).first()
+    if rel and getattr(rel, "tax_exempt", False):
+        return 0.0
+    return IL_VAT_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +72,7 @@ def issue_accounting_invoice(invoice: Invoice, therapist: Therapist, db: Session
             description=description,
             invoice_number=invoice.invoice_number,
             payment_method="online",
-            vat_rate=0.18,
+            vat_rate=_client_vat_rate(invoice, db),
             exchange_rate=exchange_rate,
         )
 
@@ -129,7 +151,7 @@ def issue_accounting_receipt(invoice: Invoice, db: Session,
             description=description,
             invoice_number=invoice.invoice_number,
             payment_method=payment_method,
-            vat_rate=0.18 if country == "IL" else 0.0,
+            vat_rate=_client_vat_rate(invoice, db) if country == "IL" else 0.0,
             exchange_rate=exchange_rate,
         )
 

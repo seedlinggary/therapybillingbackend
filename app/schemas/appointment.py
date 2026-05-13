@@ -11,6 +11,7 @@ class AppointmentCreate(BaseModel):
     session_type: Optional[str] = "Individual"
     override_price: Optional[float] = None
     session_notes: Optional[str] = None
+    tax_exempt: Optional[bool] = None  # None = use client default
 
     @model_validator(mode="after")
     def validate_times(self):
@@ -30,6 +31,7 @@ class RecurringAppointmentCreate(BaseModel):
     duration_minutes: int = 50
     session_type: Optional[str] = "Individual"
     override_price: Optional[float] = None
+    tax_exempt: Optional[bool] = None  # None = use client default
 
     @model_validator(mode="after")
     def validate_end(self):
@@ -47,6 +49,7 @@ class AppointmentUpdate(BaseModel):
     override_price: Optional[float] = None
     session_notes: Optional[str] = None
     cancellation_reason: Optional[str] = None
+    tax_exempt: Optional[bool] = None
 
 
 class AppointmentStatusUpdate(BaseModel):
@@ -74,6 +77,7 @@ class AppointmentResponse(BaseModel):
     has_invoice: bool
     billed: bool = False
     recurrence_id: Optional[uuid.UUID] = None
+    tax_exempt: Optional[bool] = None
     created_at: datetime
 
     class Config:

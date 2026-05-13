@@ -691,6 +691,7 @@ def _generate_pdf_response(invoice: Invoice) -> Response:
         paid_at=invoice.paid_at.strftime("%B %d, %Y") if invoice.paid_at else None,
         invoice_id=str(invoice.id),
         payment_instructions=therapist.payment_instructions,
+        currency=getattr(invoice, "currency", "USD") or "USD",
     )
 
     return Response(

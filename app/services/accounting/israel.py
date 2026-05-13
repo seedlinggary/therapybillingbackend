@@ -153,12 +153,24 @@ class ICountAccountingService(BaseAccountingService):
         if payload.currency == "USD" and getattr(payload, "exchange_rate", None):
             amount_ils = round(payload.amount * payload.exchange_rate, 2)
 
-        # For VAT invoice types iCount adds 18% on top of unitprice → send pre-VAT.
+        # For VAT invoice types iCount adds VAT on top of unitprice → send pre-VAT.
         # For plain receipt iCount treats unitprice as the gross total → send gross.
-        if doctype in _VAT_DOCTYPE_VALUES:
-            unitprice = round(amount_ils / (1 + IL_VAT_RATE), 2)
+        effective_vat = payload.vat_rate if payload.vat_rate is not None else IL_VAT_RATE
+        if doctype in _VAT_DOCTYPE_VALUES and effective_vat > 0:
+            unitprice = round(amount_ils / (1 + effective_vat), 2)
         else:
             unitprice = amount_ils
+
+        # Build the line item. For tax-exempt (effective_vat == 0) we must pass "vat": 0
+        # explicitly — iCount otherwise applies the country default (18%) regardless of
+        # the unitprice we send.
+        line_item: dict = {
+            "description": description,
+            "unitprice":   unitprice,
+            "quantity":    1,
+        }
+        if effective_vat == 0:
+            line_item["tax_exempt"] = 1  # iCount VAT field: percentage value (0 = exempt)
 
         body: dict = {
             "doctype":         doctype,
@@ -168,13 +180,7 @@ class ICountAccountingService(BaseAccountingService):
             "lang":            "he",
             "send_email":      1,
             "email_to_client": 1,
-            "items": [
-                {
-                    "description": description,
-                    "unitprice":   unitprice,
-                    "quantity":    1,
-                }
-            ],
+            "items":           [line_item],
         }
 
         # Payment section — only relevant for receipt / receipt_invoice docs
@@ -209,7 +215,8 @@ class ICountAccountingService(BaseAccountingService):
             result = self._post("doc.create", body)
             doc_number = str(result.get("docnum", ""))
             pdf_url = result.get("doc_url") or result.get("pdf_url")
-            vat = round(payload.amount * IL_VAT_RATE / (1 + IL_VAT_RATE), 2)
+            effective_vat = payload.vat_rate if payload.vat_rate is not None else IL_VAT_RATE
+            vat = round(payload.amount * effective_vat / (1 + effective_vat), 2) if effective_vat > 0 else 0.0
             logger.info(f"iCount document created: #{doc_number} doctype={doctype}")
             return AccountingResult(
                 success=True,
@@ -271,6 +278,46 @@ class ICountAccountingService(BaseAccountingService):
             return AccountingResult(success=False, error=detail, raw_response=exc.raw)
         except Exception as exc:
             return AccountingResult(success=False, error=f"{type(exc).__name__}: {exc}")
+
+    def validate_credentials(self) -> AccountingResult:
+        """
+        Validate by calling bank/get_list.
+        Good credentials → status:true, reason:"OK"
+        Bad credentials  → status:false, reason:"bad_login"
+        """
+        url = f"{ICOUNT_API_URL}/bank/get_list"
+        payload = {**self._auth_fields(), "list_type": "bank"}
+
+        print(
+            f"\n[iCount VALIDATE] POST {url}"
+            f"\n  cid  = {self._cid!r}"
+            f"\n  user = {self._user[:3]}*** (len={len(self._user)})"
+            f"\n  pass = {self._pass[:2]}*** (len={len(self._pass)})",
+            flush=True,
+        )
+
+        try:
+            response = httpx.post(
+                url,
+                json=payload,
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                timeout=30,
+            )
+        except httpx.RequestError as exc:
+            return AccountingResult(success=False, error=f"Network error: {exc}")
+
+        print(f"[iCount VALIDATE] HTTP {response.status_code}  body={response.text[:500]}", flush=True)
+
+        try:
+            data = response.json()
+        except Exception:
+            return AccountingResult(success=False, error=f"iCount returned non-JSON (HTTP {response.status_code})")
+
+        if data.get("status") is True or data.get("status") == 1:
+            return AccountingResult(success=True)
+
+        reason = data.get("reason") or data.get("error_description") or "Unknown error"
+        return AccountingResult(success=False, error=f"iCount: {reason}", raw_response=data)
 
     def resend_email(self, external_id: str, client_email: str) -> AccountingResult:
         try:

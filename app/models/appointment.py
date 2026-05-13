@@ -42,6 +42,9 @@ class Appointment(Base):
     # Session notes (therapist only)
     session_notes = Column(Text)
 
+    # VAT / tax-exempt override. NULL = use client's TherapistClient.tax_exempt default.
+    tax_exempt = Column(Boolean, nullable=True)
+
     # Cancellation
     cancellation_reason = Column(Text)
 

@@ -29,6 +29,9 @@ class TherapistClient(Base):
     # For weekly: 0=Mon…6=Sun. For monthly: 1-28 (day of month). Null for same_day/next_day.
     billing_anchor_day = Column(Integer)
 
+    # Tax / VAT — when True, iCount documents are issued at 0% VAT for this client
+    tax_exempt = Column(Boolean, nullable=False, server_default='false')
+
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 

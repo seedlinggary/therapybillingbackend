@@ -30,6 +30,7 @@ from app.schemas.accounting import (
 )
 from app.services.accounting import get_accounting_service
 from app.services.accounting.base import DocumentPayload
+from app.services.accounting.israel import ICountAccountingService
 from app.services.email_service import send_invoice_email
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,16 @@ def connect_accounting(
     db: Session = Depends(get_db),
 ):
     """Store encrypted credentials for an accounting provider (iCount, etc.)."""
+    if body.provider == "icount":
+        svc = ICountAccountingService(
+            company_id=body.company_id,
+            username=body.username,
+            api_key=body.api_key,
+        )
+        check = svc.validate_credentials()
+        if not check.success:
+            raise HTTPException(status_code=400, detail="Invalid iCount credentials — please check your Company ID, username, and API key.")
+
     existing = (
         db.query(AccountingIntegration)
         .filter(
@@ -188,6 +199,26 @@ def get_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     return doc
+
+
+@docs_router.delete("/{doc_id}")
+def delete_document(
+    doc_id: uuid.UUID,
+    therapist=Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """Hard-delete an accounting document record (does not cancel in iCount)."""
+    doc = db.query(AccountingDocument).filter(
+        AccountingDocument.id == doc_id,
+        AccountingDocument.therapist_id == therapist.id,
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    db.delete(doc)
+    _log(db, therapist.id, "delete_document", "success",
+         entity_type="document", entity_id=doc_id)
+    db.commit()
+    return {"ok": True}
 
 
 @docs_router.post("/{doc_id}/resend")
