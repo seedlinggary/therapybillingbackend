@@ -16,6 +16,7 @@ from app.models.therapist import Therapist
 from app.models.therapist_client import TherapistClient
 from .factory import get_accounting_service
 from .base import DocumentPayload
+from app.services.exchange_rate import get_rate
 
 IL_VAT_RATE = 0.18
 
@@ -58,11 +59,9 @@ def issue_accounting_invoice(invoice: Invoice, therapist: Therapist, db: Session
             description = f"Therapy — {len(invoice.items)} session(s)"
 
         inv_currency = getattr(invoice, "currency", None) or "ILS"
-        exchange_rate = (
-            float(therapist.ils_exchange_rate)
-            if (inv_currency == "USD" and getattr(therapist, "ils_exchange_rate", None))
-            else None
-        )
+        exchange_rate = get_rate("USD", "ILS") if inv_currency == "USD" else None
+        if inv_currency == "USD" and exchange_rate is None:
+            logger.warning("Could not fetch USD→ILS exchange rate; iCount invoice amount may be incorrect")
 
         payload = DocumentPayload(
             client_name=client.name if client else "",
@@ -133,11 +132,9 @@ def issue_accounting_receipt(invoice: Invoice, db: Session,
         country = (getattr(therapist, "country", "US") or "US").upper()
         client = invoice.client
         inv_currency = getattr(invoice, "currency", None) or ("ILS" if country == "IL" else "USD")
-        exchange_rate = (
-            float(therapist.ils_exchange_rate)
-            if (country == "IL" and inv_currency == "USD" and getattr(therapist, "ils_exchange_rate", None))
-            else None
-        )
+        exchange_rate = get_rate("USD", "ILS") if (country == "IL" and inv_currency == "USD") else None
+        if country == "IL" and inv_currency == "USD" and exchange_rate is None:
+            logger.warning("Could not fetch USD→ILS exchange rate; iCount receipt amount may be incorrect")
 
         description = f"Therapy Session — Invoice #{invoice.invoice_number}"
         if invoice.items:

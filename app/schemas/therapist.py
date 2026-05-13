@@ -16,7 +16,6 @@ class TherapistProfile(BaseModel):
     payment_instructions: Optional[str] = None
     country: str = "US"
     default_currency: str = "USD"
-    ils_exchange_rate: Optional[float] = None
     default_session_price: Optional[float] = None
     default_billing_frequency: str = "same_day"
     default_billing_anchor_day: Optional[int] = None
@@ -43,7 +42,6 @@ class TherapistUpdate(BaseModel):
     payment_instructions: Optional[str] = None
     country: Optional[str] = None
     default_currency: Optional[str] = None
-    ils_exchange_rate: Optional[float] = None
     default_session_price: Optional[float] = None
     default_billing_frequency: Optional[str] = None
     default_billing_anchor_day: Optional[int] = None
