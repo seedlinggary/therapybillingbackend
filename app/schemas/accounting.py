@@ -7,10 +7,10 @@ import uuid
 # ── Integration ───────────────────────────────────────────────────────────────
 
 class AccountingConnectRequest(BaseModel):
-    provider: str                           # 'icount'
-    company_id: str                         # iCount cid
-    username: str
-    api_key: str                            # iCount password / API key
+    provider: str                           # 'icount' | 'green_invoice'
+    company_id: str                         # iCount: cid  |  Green Invoice: API key ID
+    username: str = ""                      # iCount: username  |  Green Invoice: unused
+    api_key: str                            # iCount: password  |  Green Invoice: API key secret
 
 
 class AccountingIntegrationStatus(BaseModel):
@@ -19,6 +19,7 @@ class AccountingIntegrationStatus(BaseModel):
     company_id: Optional[str] = None
     is_active: bool
     created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

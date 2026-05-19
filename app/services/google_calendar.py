@@ -66,6 +66,12 @@ def get_free_busy(therapist: Therapist, db: Session, date_str: str, duration_min
     return slots
 
 
+def _initials(name: str) -> str:
+    """'John Doe' → 'J.D.'  (legal compliance — no full names in calendar)"""
+    parts = name.strip().split()
+    return ".".join(p[0].upper() for p in parts if p) + "." if parts else "?"
+
+
 def create_calendar_event(
     therapist: Therapist,
     db: Session,
@@ -80,7 +86,7 @@ def create_calendar_event(
     calendar_id = therapist.google_calendar_id or "primary"
 
     event = {
-        "summary": f"Therapy - {client_name} ({session_type})",
+        "summary": f"Therapy - {_initials(client_name)} ({session_type})",
         "description": f"Session ID: {appointment_id}",
         "start": {"dateTime": start_time.isoformat(), "timeZone": therapist.timezone},
         "end": {"dateTime": end_time.isoformat(), "timeZone": therapist.timezone},

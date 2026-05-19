@@ -185,13 +185,23 @@ class ICountAccountingService(BaseAccountingService):
 
         # Payment section — only relevant for receipt / receipt_invoice docs
         method = (payload.payment_method or "cash").lower()
+        pay_date = getattr(payload, "payment_date", None)
+        if pay_date:
+            print(pay_date)
+            # body['paydate'] = pay_date
+            body['paydate'] = pay_date
+            body['hwc'] = f'Last payment was made on {pay_date}.'
         if method == "cash":
             body["cash"] = {"sum": amount_ils}
-        elif method == "check":
-            body["check"] = {"sum": amount_ils}
+            if pay_date:
+                print(pay_date)
+                # body['paydate'] = pay_date
+                body["cash"]['paydate'] = pay_date
+
         elif method == "bank_transfer":
-            body["bank_transfer"] = {"sum": amount_ils}
-        # "online" (Stripe) — no payment block; iCount treats it as already collected
+            body["banktransfer"] = {"sum": amount_ils}
+        elif method in ("credit_card", "online"):
+            body["cc"] = {"sum": amount_ils}
 
         if payload.invoice_number:
             body["description"] = f"Invoice #{payload.invoice_number}"
@@ -204,7 +214,7 @@ class ICountAccountingService(BaseAccountingService):
 
     @staticmethod
     def _payment_type_code(method: str) -> int:
-        return {"online": 4, "cash": 1, "check": 2, "bank_transfer": 3}.get(method, 4)
+        return {"online": 3, "credit_card": 3, "cash": 1, "bank_transfer": 4}.get(method, 3)
 
     def _create_document(self, doctype: str, payload: DocumentPayload,
                          extra: Optional[dict] = None) -> AccountingResult:

@@ -25,11 +25,12 @@ class DocumentPayload:
     currency: str
     description: str
     invoice_number: str
-    payment_method: str = "online"          # online | cash | bank_transfer | check
+    payment_method: str = "online"          # online | cash | bank_transfer | check | credit_card
     line_items: Optional[list] = None       # [{description, amount, quantity}]
     vat_rate: float = 0.0                   # 0.18 for IL
     original_external_id: Optional[str] = None  # for credit notes
     exchange_rate: Optional[float] = None   # USD→ILS rate for IL therapists billing in USD
+    payment_date: Optional[str] = None      # ISO date string YYYY-MM-DD; defaults to today if None
 
 
 class BaseAccountingService(ABC):

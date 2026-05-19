@@ -31,6 +31,7 @@ from app.schemas.accounting import (
 from app.services.accounting import get_accounting_service
 from app.services.accounting.base import DocumentPayload
 from app.services.accounting.israel import ICountAccountingService
+from app.services.accounting.green_invoice import GreenInvoiceAccountingService
 from app.services.email_service import send_invoice_email
 
 logger = logging.getLogger(__name__)
@@ -75,7 +76,7 @@ def connect_accounting(
     therapist=Depends(get_current_therapist),
     db: Session = Depends(get_db),
 ):
-    """Store encrypted credentials for an accounting provider (iCount, etc.)."""
+    """Store encrypted credentials for an accounting provider (iCount, Green Invoice, etc.)."""
     if body.provider == "icount":
         svc = ICountAccountingService(
             company_id=body.company_id,
@@ -85,6 +86,16 @@ def connect_accounting(
         check = svc.validate_credentials()
         if not check.success:
             raise HTTPException(status_code=400, detail="Invalid iCount credentials — please check your Company ID, username, and API key.")
+
+    elif body.provider == "green_invoice":
+        # For Green Invoice: company_id field holds the API key ID; api_key holds the secret
+        svc_gi = GreenInvoiceAccountingService(
+            api_key_id=body.company_id,
+            api_key_secret=body.api_key,
+        )
+        check_gi = svc_gi.validate_credentials()
+        if not check_gi.success:
+            raise HTTPException(status_code=400, detail=f"Invalid Green Invoice credentials — {check_gi.error or 'please check your API Key ID and Secret.'}")
 
     existing = (
         db.query(AccountingIntegration)
@@ -149,19 +160,20 @@ def disconnect_accounting(
     return {"ok": True}
 
 
-@router.get("/status", response_model=Optional[AccountingIntegrationStatus])
+@router.get("/status", response_model=List[AccountingIntegrationStatus])
 def get_integration_status(
     therapist=Depends(get_current_therapist),
     db: Session = Depends(get_db),
 ):
-    """Returns the active accounting integration for this therapist, or null."""
+    """Returns all active accounting integrations for this therapist (may be empty)."""
     return (
         db.query(AccountingIntegration)
         .filter(
             AccountingIntegration.therapist_id == therapist.id,
             AccountingIntegration.is_active == True,
         )
-        .first()
+        .order_by(AccountingIntegration.updated_at.desc())
+        .all()
     )
 
 

@@ -17,7 +17,7 @@ from app.models.invoice_item import InvoiceItem
 from app.models.appointment import Appointment, AppointmentStatus
 from app.models.therapist_client import TherapistClient
 from app.models.payment import Payment
-from app.schemas.invoice import InvoiceResponse, InvoiceItemResponse, InvoiceCreate
+from app.schemas.invoice import InvoiceResponse, InvoiceItemResponse, InvoiceCreate, MarkPaidRequest
 from app.services.stripe_service import generate_invoice_number
 from app.services.pdf_service import generate_invoice_pdf
 from app.services.email_service import send_invoice_email
@@ -433,6 +433,7 @@ def verify_stripe_payment(
 @router.post("/therapist/invoices/{invoice_id}/mark-paid", response_model=InvoiceResponse)
 def mark_invoice_paid(
     invoice_id: str,
+    body: MarkPaidRequest = None,
     therapist: Therapist = Depends(get_current_therapist),
     db: Session = Depends(get_db),
 ):
@@ -446,11 +447,13 @@ def mark_invoice_paid(
     if invoice.status == InvoiceStatus.VOID:
         raise HTTPException(status_code=400, detail="Cannot mark a voided invoice as paid")
 
+    req = body or MarkPaidRequest()
     invoice.status = InvoiceStatus.PAID
     invoice.paid_at = datetime.utcnow()
     db.commit()
     db.refresh(invoice)
-    issue_accounting_receipt(invoice, db, payment_method="cash")
+    issue_accounting_receipt(invoice, db, payment_method=req.payment_method,
+                             payment_date=req.payment_date)
     return _build_response(invoice)
 
 

@@ -5,6 +5,7 @@ the same logic without circular dependencies.
 """
 import logging
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -116,7 +117,8 @@ def issue_accounting_invoice(invoice: Invoice, therapist: Therapist, db: Session
 
 
 def issue_accounting_receipt(invoice: Invoice, db: Session,
-                             payment_method: str = "online") -> None:
+                             payment_method: str = "online",
+                             payment_date: Optional[str] = None) -> None:
     """
     Issue an accounting receipt after an invoice is marked paid.
     For IL: creates a receipt (קבלה) referencing the existing iCount invoice if one
@@ -150,6 +152,7 @@ def issue_accounting_receipt(invoice: Invoice, db: Session,
             payment_method=payment_method,
             vat_rate=_client_vat_rate(invoice, db) if country == "IL" else 0.0,
             exchange_rate=exchange_rate,
+            payment_date=payment_date,
         )
 
         service = get_accounting_service(therapist, db)

@@ -45,6 +45,11 @@ class InvoiceCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class MarkPaidRequest(BaseModel):
+    payment_method: str = "cash"   # cash | bank_transfer | check | credit_card
+    payment_date: Optional[str] = None  # YYYY-MM-DD; defaults to today if omitted
+
+
 class InvoiceListFilter(BaseModel):
     status: Optional[str] = None
     client_id: Optional[uuid.UUID] = None
