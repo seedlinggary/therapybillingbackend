@@ -14,7 +14,7 @@ from app.models.therapist import Therapist
 from app.models.client import Client
 from app.models.appointment import Appointment, AppointmentStatus
 from app.models.recurrence_rule import RecurrenceRule
-from app.models.therapist_client import TherapistClient
+from app.models.therapist_client import TherapistClient, BillingFrequency
 from app.schemas.appointment import (
     AppointmentCreate, AppointmentUpdate, AppointmentStatusUpdate,
     AppointmentResponse, RecurringAppointmentCreate,
@@ -427,6 +427,20 @@ def update_appointment_status(
 
     db.commit()
     db.refresh(appt)
+
+    if data.status == AppointmentStatus.COMPLETED and not appt.billed:
+        rel = db.query(TherapistClient).filter(
+            TherapistClient.therapist_id == therapist.id,
+            TherapistClient.client_id == appt.client_id,
+        ).first()
+        if rel and rel.billing_frequency == BillingFrequency.SAME_DAY:
+            try:
+                from app.services.billing_service import create_appointment_invoice
+                create_appointment_invoice(db, appt, therapist, rel)
+            except Exception as e:
+                import logging as _log
+                _log.getLogger(__name__).warning(f"Auto-billing failed for appointment {appt.id}: {e}")
+
     return _build_response(appt, db)
 
 

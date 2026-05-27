@@ -38,7 +38,8 @@ class Therapist(Base):
     paypal_connected = Column(Boolean, default=False)
 
     # Profile
-    timezone = Column(String(64), default="America/New_York")
+    business_type = Column(String(128), nullable=True)
+    timezone = Column(String(64), default="Asia/Jerusalem")
     phone = Column(String(32))
     license_number = Column(String(64))
     bio = Column(Text)
@@ -61,6 +62,10 @@ class Therapist(Base):
 
     show_conversion_note = Column(Boolean, nullable=False, server_default='false')
 
+    # Payment reminders — null/0 = disabled; >0 = send every N days to clients with unpaid invoices
+    reminder_frequency_days = Column(Integer, nullable=True)
+    last_payment_reminder_at = Column(DateTime(timezone=True), nullable=True)
+
     is_active = Column(Boolean, default=True)
     onboarding_completed = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
@@ -71,3 +76,4 @@ class Therapist(Base):
     appointments = relationship("Appointment", back_populates="therapist")
     invoices = relationship("Invoice", back_populates="therapist")
     recurrence_rules = relationship("RecurrenceRule", back_populates="therapist")
+    service_types = relationship("ServiceType", back_populates="therapist", cascade="all, delete-orphan")

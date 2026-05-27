@@ -288,6 +288,15 @@ def _billing_cutoff(
         # Bill everything completed before end of yesterday (the week just closed)
         return datetime.combine(today - timedelta(days=1), time.max)
 
+    if billing_frequency == BillingFrequency.BIWEEKLY:
+        # Same anchor_day logic as weekly, but only fires on even ISO week numbers
+        anchor = anchor_day if anchor_day is not None else 6
+        if today.weekday() != anchor:
+            return None
+        if today.isocalendar()[1] % 2 != 0:
+            return None
+        return datetime.combine(today - timedelta(days=1), time.max)
+
     if billing_frequency == BillingFrequency.MONTHLY:
         # anchor_day: 1-28 (day of month, default 1st)
         anchor = anchor_day if anchor_day is not None else 1

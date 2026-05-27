@@ -17,7 +17,7 @@ from app.models.invoice_item import InvoiceItem
 from app.models.appointment import Appointment, AppointmentStatus
 from app.models.therapist_client import TherapistClient
 from app.models.payment import Payment
-from app.schemas.invoice import InvoiceResponse, InvoiceItemResponse, InvoiceCreate, MarkPaidRequest
+from app.schemas.invoice import InvoiceResponse, InvoiceItemResponse, InvoiceCreate, MarkPaidRequest, StandaloneInvoiceCreate
 from app.services.stripe_service import generate_invoice_number
 from app.services.pdf_service import generate_invoice_pdf
 from app.services.email_service import send_invoice_email
@@ -49,7 +49,7 @@ def _build_response(invoice: Invoice) -> InvoiceResponse:
             id=invoice.id,  # reuse invoice id as placeholder
             appointment_id=invoice.appointment_id,
             amount=float(invoice.amount),
-            description="Therapy Session",
+            description=invoice.appointment.session_type or "Session",
             appointment_start=invoice.appointment.start_time,
         )]
 
@@ -194,7 +194,7 @@ def create_invoice(
     db.add(InvoiceItem(
         invoice_id=invoice.id, appointment_id=appt.id,
         amount=amount,
-        description=f"Therapy Session — {appt.start_time.strftime('%B %d, %Y')}",
+        description=f"{appt.session_type or 'Session'} — {appt.start_time.strftime('%B %d, %Y')}",
     ))
 
     _attach_payment_session(db, invoice, therapist)
@@ -217,6 +217,73 @@ def create_invoice(
             due_date=due_date.strftime("%B %d, %Y"),
             payment_link=invoice.payment_link,
             session_date=appt.start_time.strftime("%B %d, %Y"),
+            payment_instructions=therapist.payment_instructions,
+            currency=currency,
+            conversion_note=conversion_note,
+        )
+    except Exception:
+        pass
+
+    issue_accounting_invoice(invoice, therapist, db)
+
+    return _build_response(_load_invoice(db).filter(Invoice.id == invoice.id).first())
+
+
+# ─── Standalone invoice (not tied to an appointment) ─────────────────────────
+
+@router.post("/therapist/invoices/standalone", response_model=InvoiceResponse, status_code=201)
+def create_standalone_invoice(
+    data: StandaloneInvoiceCreate,
+    therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    rel = db.query(TherapistClient).filter(
+        TherapistClient.therapist_id == therapist.id,
+        TherapistClient.client_id == data.client_id,
+    ).first()
+    if not rel:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    client = db.query(Client).filter(Client.id == data.client_id).first()
+    due_date = data.due_date or datetime.utcnow() + timedelta(days=7)
+    currency = getattr(therapist, "default_currency", None) or "USD"
+
+    invoice = Invoice(
+        therapist_id=therapist.id, client_id=data.client_id,
+        appointment_id=None,
+        invoice_number=generate_invoice_number(),
+        amount=data.amount, status=InvoiceStatus.UNPAID,
+        due_date=due_date, notes=data.notes,
+        currency=currency,
+    )
+    db.add(invoice)
+    db.flush()
+
+    db.add(InvoiceItem(
+        invoice_id=invoice.id, appointment_id=None,
+        amount=data.amount,
+        description=data.description,
+    ))
+
+    _attach_payment_session(db, invoice, therapist)
+
+    db.commit()
+    db.refresh(invoice)
+
+    try:
+        other_currency = "ILS" if currency == "USD" else "USD"
+        conversion_note = (
+            build_conversion_note(data.amount, currency, other_currency)
+            if getattr(therapist, "show_conversion_note", False)
+            else None
+        )
+        send_invoice_email(
+            client_email=client.email, client_name=client.name,
+            therapist_name=therapist.name,
+            invoice_number=invoice.invoice_number, amount=data.amount,
+            due_date=due_date.strftime("%B %d, %Y"),
+            payment_link=invoice.payment_link,
+            session_date=data.service_date.strftime("%B %d, %Y") if data.service_date else None,
             payment_instructions=therapist.payment_instructions,
             currency=currency,
             conversion_note=conversion_note,
@@ -273,7 +340,7 @@ def bill_now(
     db.add(InvoiceItem(
         invoice_id=invoice.id, appointment_id=appt.id,
         amount=amount,
-        description=f"Therapy Session — {appt.start_time.strftime('%B %d, %Y')}",
+        description=f"{appt.session_type or 'Session'} — {appt.start_time.strftime('%B %d, %Y')}",
     ))
 
     _attach_payment_session(db, invoice, therapist)
@@ -501,8 +568,11 @@ def resend_invoice_email(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    first_date = invoice.items[0].appointment.start_time if invoice.items else (
-        invoice.appointment.start_time if invoice.appointment else None
+    first_item = invoice.items[0] if invoice.items else None
+    first_date = (
+        first_item.appointment.start_time if first_item and first_item.appointment else (
+            invoice.appointment.start_time if invoice.appointment else None
+        )
     )
     send_invoice_email(
         client_email=invoice.client.email, client_name=invoice.client.name,
@@ -666,8 +736,8 @@ def _generate_pdf_response(invoice: Invoice) -> Response:
         appt = item.appointment
         line_items.append({
             "description": item.description,
-            "date": appt.start_time.strftime("%B %d, %Y") if appt else "N/A",
-            "session_type": appt.session_type if appt else "Session",
+            "date": appt.start_time.strftime("%B %d, %Y") if appt else "—",
+            "session_type": appt.session_type if appt else "",
             "amount": float(item.amount),
         })
 

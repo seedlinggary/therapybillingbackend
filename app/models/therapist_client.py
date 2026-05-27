@@ -10,6 +10,7 @@ class BillingFrequency:
     SAME_DAY = "same_day"
     NEXT_DAY = "next_day"
     WEEKLY = "weekly"
+    BIWEEKLY = "biweekly"
     MONTHLY = "monthly"
 
 

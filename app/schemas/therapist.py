@@ -9,6 +9,7 @@ class TherapistProfile(BaseModel):
     email: EmailStr
     name: str
     picture_url: Optional[str] = None
+    business_type: Optional[str] = None
     timezone: str
     phone: Optional[str] = None
     license_number: Optional[str] = None
@@ -27,6 +28,7 @@ class TherapistProfile(BaseModel):
     paypal_email: Optional[str] = None
     paypal_connected: bool = False
     show_conversion_note: bool = False
+    reminder_frequency_days: Optional[int] = None
     created_at: datetime
 
     class Config:
@@ -35,6 +37,7 @@ class TherapistProfile(BaseModel):
 
 class TherapistUpdate(BaseModel):
     name: Optional[str] = None
+    business_type: Optional[str] = None
     timezone: Optional[str] = None
     phone: Optional[str] = None
     license_number: Optional[str] = None
@@ -51,6 +54,7 @@ class TherapistUpdate(BaseModel):
     paypal_email: Optional[str] = None
     paypal_connected: Optional[bool] = None
     show_conversion_note: Optional[bool] = None
+    reminder_frequency_days: Optional[int] = None
 
 
 class TherapistOnboardingStatus(BaseModel):

@@ -86,7 +86,7 @@ def create_calendar_event(
     calendar_id = therapist.google_calendar_id or "primary"
 
     event = {
-        "summary": f"Therapy - {_initials(client_name)} ({session_type})",
+        "summary": f"{session_type} - {_initials(client_name)}",
         "description": f"Session ID: {appointment_id}",
         "start": {"dateTime": start_time.isoformat(), "timeZone": therapist.timezone},
         "end": {"dateTime": end_time.isoformat(), "timeZone": therapist.timezone},

@@ -9,14 +9,16 @@ from app.config import settings
 from app.routers import auth, onboarding, clients, appointments, invoices, stripe_webhooks, payme_webhooks, paypal_webhooks
 from app.routers.admin import router as admin_router
 from app.routers.accounting import router as accounting_router, docs_router
+from app.routers.service_types import router as service_types_router
+from app.routers.contact import router as contact_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="TherapyBilling API",
+    title="PracticeBilling API",
     version="1.0.0",
-    description="Therapist scheduling and billing platform",
+    description="Scheduling and billing platform for any practice or business",
 )
 
 app.add_middleware(
@@ -40,6 +42,8 @@ app.include_router(paypal_webhooks.router)
 app.include_router(admin_router)
 app.include_router(accounting_router)
 app.include_router(docs_router)
+app.include_router(service_types_router)
+app.include_router(contact_router)
 
 
 # ─── Scheduler ───────────────────────────────────────────────────────────────
@@ -71,11 +75,20 @@ def seed_admin():
 def start_scheduler():
     from app.jobs.daily_billing import run_daily_billing
     from app.jobs.retry_worker import run_retry_worker
+    from app.jobs.payment_reminders import run_payment_reminders
 
     scheduler.add_job(
         run_daily_billing,
         trigger=CronTrigger(hour=2),
         id="daily_billing",
+        replace_existing=True,
+        misfire_grace_time=3600,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        run_payment_reminders,
+        trigger=CronTrigger(hour=3),
+        id="payment_reminders",
         replace_existing=True,
         misfire_grace_time=3600,
         coalesce=True,
@@ -89,7 +102,7 @@ def start_scheduler():
         coalesce=True,
     )
     scheduler.start()
-    logger.info("APScheduler started — daily billing 02:00 UTC, retry worker every 5 min")
+    logger.info("APScheduler started — daily billing 02:00 UTC, payment reminders 03:00 UTC, retry worker every 5 min")
 
 
 @app.on_event("shutdown")

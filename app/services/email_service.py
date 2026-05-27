@@ -17,7 +17,7 @@ def _send(to: str, subject: str, html: str):
 def send_client_invite(client_email: str, client_name: str, therapist_name: str, invite_token: str):
     activate_url = f"{settings.FRONTEND_URL}/activate?token={invite_token}"
     html = f"""
-    <h2>You've been invited to TherapyBilling</h2>
+    <h2>You've been invited to PracticeBilling</h2>
     <p>Hi {client_name},</p>
     <p><strong>{therapist_name}</strong> has added you as a client.</p>
     <p>Click below to set up your account and view your appointments and invoices:</p>
@@ -40,12 +40,12 @@ def send_appointment_confirmation(
     html = f"""
     <h2>Appointment Confirmed</h2>
     <p>Hi {client_name},</p>
-    <p>Your {session_type} session with <strong>{therapist_name}</strong> has been scheduled.</p>
+    <p>Your <strong>{session_type}</strong> appointment with <strong>{therapist_name}</strong> has been scheduled.</p>
     <ul>
         <li><strong>Date/Time:</strong> {start_time}</li>
-        <li><strong>Duration:</strong> Until {end_time}</li>
+        <li><strong>Until:</strong> {end_time}</li>
     </ul>
-    <p>You can view your upcoming sessions at <a href="{settings.FRONTEND_URL}/client/sessions">your dashboard</a>.</p>
+    <p>You can view your upcoming appointments at <a href="{settings.FRONTEND_URL}/client/sessions">your dashboard</a>.</p>
     """
     _send(client_email, f"Appointment confirmed with {therapist_name}", html)
 
@@ -70,20 +70,20 @@ def send_recurring_appointment_confirmation(
     html = f"""
     <h2>Recurring Appointments Scheduled</h2>
     <p>Hi {client_name},</p>
-    <p><strong>{therapist_name}</strong> has scheduled a series of {session_type} sessions for you.</p>
+    <p><strong>{therapist_name}</strong> has scheduled a series of <strong>{session_type}</strong> appointments for you.</p>
     <table style="border-collapse:collapse;width:100%;max-width:420px;margin:16px 0">
         <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Frequency</strong></td>
             <td style="padding:8px;border:1px solid #e5e7eb">Every {freq_label}, on {day_of_week}s</td></tr>
         <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Time</strong></td>
             <td style="padding:8px;border:1px solid #e5e7eb">{time_of_day}</td></tr>
-        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>First session</strong></td>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>First appointment</strong></td>
             <td style="padding:8px;border:1px solid #e5e7eb">{start_date}</td></tr>
-        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Last session</strong></td>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Last appointment</strong></td>
             <td style="padding:8px;border:1px solid #e5e7eb">{end_date}</td></tr>
-        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Total sessions</strong></td>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Total appointments</strong></td>
             <td style="padding:8px;border:1px solid #e5e7eb">{session_count}</td></tr>
     </table>
-    <p>You can view all your upcoming sessions at <a href="{settings.FRONTEND_URL}/client/sessions">your dashboard</a>.</p>
+    <p>You can view all your upcoming appointments at <a href="{settings.FRONTEND_URL}/client/sessions">your dashboard</a>.</p>
     """
     _send(
         client_email,
@@ -103,9 +103,9 @@ def send_appointment_cancellation(
     html = f"""
     <h2>Appointment Canceled</h2>
     <p>Hi {client_name},</p>
-    <p>Your session with <strong>{therapist_name}</strong> on <strong>{start_time}</strong> has been canceled.</p>
+    <p>Your appointment with <strong>{therapist_name}</strong> on <strong>{start_time}</strong> has been canceled.</p>
     {reason_text}
-    <p>Please contact your therapist to reschedule.</p>
+    <p>Please contact us to reschedule.</p>
     """
     _send(client_email, f"Appointment canceled - {start_time}", html)
 
@@ -164,9 +164,9 @@ def send_invoice_email(
     html = f"""
     <h2>Invoice #{invoice_number}</h2>
     <p>Hi {client_name},</p>
-    <p>An invoice has been created for your session with <strong>{therapist_name}</strong>.</p>
+    <p>An invoice has been created for your appointment with <strong>{therapist_name}</strong>.</p>
     <table style="border-collapse:collapse;width:100%;max-width:400px">
-        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Session Date</strong></td><td style="padding:8px;border:1px solid #e5e7eb">{session_date}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Date</strong></td><td style="padding:8px;border:1px solid #e5e7eb">{session_date}</td></tr>
         <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Amount</strong></td><td style="padding:8px;border:1px solid #e5e7eb">{symbol}{amount:.2f}</td></tr>
         <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Due Date</strong></td><td style="padding:8px;border:1px solid #e5e7eb">{due_date}</td></tr>
     </table>
@@ -176,3 +176,66 @@ def send_invoice_email(
     <p style="margin-top:16px">You can also view and download your invoices at <a href="{settings.FRONTEND_URL}/client/invoices">your dashboard</a>.</p>
     """
     _send(client_email, f"Invoice #{invoice_number} from {therapist_name} - {symbol}{amount:.2f}", html)
+
+
+def send_payment_reminder(
+    client_email: str,
+    client_name: str,
+    therapist_name: str,
+    invoices: list,   # list of dicts: invoice_number, amount, due_date, payment_link (optional)
+    payment_instructions: Optional[str] = None,
+    currency: str = "USD",
+):
+    symbol = "₪" if currency == "ILS" else "$"
+    total = sum(inv["amount"] for inv in invoices)
+    count = len(invoices)
+
+    rows_html = ""
+    for inv in invoices:
+        pay_cell = ""
+        if inv.get("payment_link"):
+            pay_cell = f'<a href="{inv["payment_link"]}" style="color:#4F46E5;font-weight:600;">Pay Now</a>'
+        rows_html += f"""
+        <tr>
+            <td style="padding:8px;border:1px solid #e5e7eb">#{inv["invoice_number"]}</td>
+            <td style="padding:8px;border:1px solid #e5e7eb">{symbol}{inv["amount"]:.2f}</td>
+            <td style="padding:8px;border:1px solid #e5e7eb">{inv["due_date"]}</td>
+            <td style="padding:8px;border:1px solid #e5e7eb">{pay_cell}</td>
+        </tr>"""
+
+    payment_instructions_html = ""
+    if payment_instructions:
+        payment_instructions_html = f"""
+        <div style="margin-top:20px;padding:16px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+            <p style="margin:0 0 8px;font-weight:600;color:#374151">Payment Instructions</p>
+            <p style="margin:0;color:#4b5563;white-space:pre-line">{payment_instructions}</p>
+        </div>"""
+
+    subject_suffix = f"{count} invoice{'s' if count > 1 else ''}"
+    html = f"""
+    <h2>Payment Reminder</h2>
+    <p>Hi {client_name},</p>
+    <p>This is a friendly reminder that you have <strong>{count} outstanding invoice{'s' if count > 1 else ''}</strong>
+    from <strong>{therapist_name}</strong>.</p>
+    <table style="border-collapse:collapse;width:100%;max-width:520px;margin:16px 0">
+        <thead>
+            <tr style="background:#f9fafb">
+                <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Invoice #</th>
+                <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Amount</th>
+                <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Due Date</th>
+                <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Pay</th>
+            </tr>
+        </thead>
+        <tbody>{rows_html}</tbody>
+        <tfoot>
+            <tr style="background:#f9fafb">
+                <td style="padding:8px;border:1px solid #e5e7eb;font-weight:700" colspan="1">Total Outstanding</td>
+                <td style="padding:8px;border:1px solid #e5e7eb;font-weight:700" colspan="3">{symbol}{total:.2f}</td>
+            </tr>
+        </tfoot>
+    </table>
+    {payment_instructions_html}
+    <p style="margin-top:16px">You can view all your invoices at
+    <a href="{settings.FRONTEND_URL}/client/invoices">your dashboard</a>.</p>
+    """
+    _send(client_email, f"Payment reminder: {subject_suffix} outstanding from {therapist_name}", html)

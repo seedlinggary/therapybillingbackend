@@ -6,7 +6,7 @@ import uuid
 
 class InvoiceItemResponse(BaseModel):
     id: uuid.UUID
-    appointment_id: uuid.UUID
+    appointment_id: Optional[uuid.UUID] = None
     amount: float
     description: str
     appointment_start: Optional[datetime] = None
@@ -41,6 +41,15 @@ class InvoiceResponse(BaseModel):
 
 class InvoiceCreate(BaseModel):
     appointment_id: uuid.UUID
+    due_date: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class StandaloneInvoiceCreate(BaseModel):
+    client_id: uuid.UUID
+    description: str
+    amount: float
+    service_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     notes: Optional[str] = None
 
