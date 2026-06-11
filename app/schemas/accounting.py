@@ -11,6 +11,7 @@ class AccountingConnectRequest(BaseModel):
     company_id: str                         # iCount: cid  |  Green Invoice: API key ID
     username: str = ""                      # iCount: username  |  Green Invoice: unused
     api_key: str                            # iCount: password  |  Green Invoice: API key secret
+    green_invoice_doc_type: Optional[str] = None   # 'receipt' | 'receipt_invoice' | 'invoice'
 
 
 class AccountingIntegrationStatus(BaseModel):
@@ -18,11 +19,16 @@ class AccountingIntegrationStatus(BaseModel):
     provider: str
     company_id: Optional[str] = None
     is_active: bool
+    green_invoice_doc_type: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class AccountingDocTypeUpdate(BaseModel):
+    green_invoice_doc_type: str   # 'receipt' | 'receipt_invoice' | 'invoice'
 
 
 # ── Document ──────────────────────────────────────────────────────────────────

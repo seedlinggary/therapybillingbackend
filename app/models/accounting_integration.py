@@ -16,6 +16,8 @@ class AccountingIntegration(Base):
     company_id = Column(String(128))                    # iCount company ID (cid)
     username_enc = Column(Text)                         # Fernet-encrypted username (iCount user)
     is_active = Column(Boolean, nullable=False, default=True)
+    # GreenInvoice document type: 'invoice' (305), 'receipt_invoice' (320), 'receipt' (400)
+    green_invoice_doc_type = Column(String(32), nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 

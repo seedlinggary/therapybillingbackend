@@ -65,6 +65,10 @@ class TherapistClientDetail(BaseModel):
     billing_frequency: str = "same_day"
     billing_anchor_day: Optional[int] = None
     tax_exempt: bool = False
+    notify_appointment: bool = True
+    notify_invoice: bool = True
+    notify_receipt: bool = True
+    notify_reminder: bool = True
     created_at: datetime
 
     class Config:
@@ -81,6 +85,10 @@ class TherapistClientUpdate(BaseModel):
     notes: Optional[str] = None
     is_active: Optional[bool] = None
     tax_exempt: Optional[bool] = None
+    notify_appointment: Optional[bool] = None
+    notify_invoice: Optional[bool] = None
+    notify_receipt: Optional[bool] = None
+    notify_reminder: Optional[bool] = None
 
 
 class TherapistClientBillingUpdate(BaseModel):

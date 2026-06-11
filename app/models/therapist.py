@@ -65,6 +65,11 @@ class Therapist(Base):
     # Payment reminders — null/0 = disabled; >0 = send every N days to clients with unpaid invoices
     reminder_frequency_days = Column(Integer, nullable=True)
     last_payment_reminder_at = Column(DateTime(timezone=True), nullable=True)
+    # True = keep sending every N days until paid; False = send once per client then stop
+    reminder_repeat = Column(Boolean, nullable=False, server_default='true')
+
+    # Dashboard general note
+    dashboard_note = Column(Text, nullable=True)
 
     is_active = Column(Boolean, default=True)
     onboarding_completed = Column(Boolean, default=False)

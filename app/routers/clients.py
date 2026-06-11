@@ -35,6 +35,10 @@ def _build_detail(rel: TherapistClient, client: Client) -> TherapistClientDetail
         billing_frequency=rel.billing_frequency,
         billing_anchor_day=rel.billing_anchor_day,
         tax_exempt=rel.tax_exempt,
+        notify_appointment=getattr(rel, 'notify_appointment', True),
+        notify_invoice=getattr(rel, 'notify_invoice', True),
+        notify_receipt=getattr(rel, 'notify_receipt', True),
+        notify_reminder=getattr(rel, 'notify_reminder', True),
         created_at=rel.created_at,
     )
 

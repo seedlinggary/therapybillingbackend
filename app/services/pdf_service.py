@@ -140,5 +140,20 @@ def generate_invoice_pdf(
         note_style = ParagraphStyle("note", fontSize=8, textColor=colors.grey, alignment=TA_CENTER)
         story.append(Paragraph(f"Reference ID: {invoice_id}", note_style))
 
+    # Disclaimer
+    story.append(Spacer(1, 0.4 * inch))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d1d5db")))
+    story.append(Spacer(1, 0.1 * inch))
+    disclaimer_style = ParagraphStyle(
+        "disclaimer", fontSize=7, textColor=colors.HexColor("#9ca3af"),
+        alignment=TA_CENTER, leading=10,
+    )
+    story.append(Paragraph(
+        "This document is for informational purposes only and does not constitute a legally "
+        "recognized tax invoice or official accounting record. For official invoicing and tax "
+        "compliance, please use a certified accounting system (such as iCount or Green Invoice).",
+        disclaimer_style,
+    ))
+
     doc.build(story)
     return buffer.getvalue()

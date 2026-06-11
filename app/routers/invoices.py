@@ -203,26 +203,27 @@ def create_invoice(
     db.commit()
     db.refresh(invoice)
 
-    try:
-        other_currency = "ILS" if currency == "USD" else "USD"
-        conversion_note = (
-            build_conversion_note(amount, currency, other_currency)
-            if getattr(therapist, "show_conversion_note", False)
-            else None
-        )
-        send_invoice_email(
-            client_email=appt.client.email, client_name=appt.client.name,
-            therapist_name=therapist.name,
-            invoice_number=invoice.invoice_number, amount=amount,
-            due_date=due_date.strftime("%B %d, %Y"),
-            payment_link=invoice.payment_link,
-            session_date=appt.start_time.strftime("%B %d, %Y"),
-            payment_instructions=therapist.payment_instructions,
-            currency=currency,
-            conversion_note=conversion_note,
-        )
-    except Exception:
-        pass
+    if getattr(rel, 'notify_invoice', True):
+        try:
+            other_currency = "ILS" if currency == "USD" else "USD"
+            conversion_note = (
+                build_conversion_note(amount, currency, other_currency)
+                if getattr(therapist, "show_conversion_note", False)
+                else None
+            )
+            send_invoice_email(
+                client_email=appt.client.email, client_name=appt.client.name,
+                therapist_name=therapist.name,
+                invoice_number=invoice.invoice_number, amount=amount,
+                due_date=due_date.strftime("%B %d, %Y"),
+                payment_link=invoice.payment_link,
+                session_date=appt.start_time.strftime("%B %d, %Y"),
+                payment_instructions=therapist.payment_instructions,
+                currency=currency,
+                conversion_note=conversion_note,
+            )
+        except Exception:
+            pass
 
     issue_accounting_invoice(invoice, therapist, db)
 
@@ -270,26 +271,27 @@ def create_standalone_invoice(
     db.commit()
     db.refresh(invoice)
 
-    try:
-        other_currency = "ILS" if currency == "USD" else "USD"
-        conversion_note = (
-            build_conversion_note(data.amount, currency, other_currency)
-            if getattr(therapist, "show_conversion_note", False)
-            else None
-        )
-        send_invoice_email(
-            client_email=client.email, client_name=client.name,
-            therapist_name=therapist.name,
-            invoice_number=invoice.invoice_number, amount=data.amount,
-            due_date=due_date.strftime("%B %d, %Y"),
-            payment_link=invoice.payment_link,
-            session_date=data.service_date.strftime("%B %d, %Y") if data.service_date else None,
-            payment_instructions=therapist.payment_instructions,
-            currency=currency,
-            conversion_note=conversion_note,
-        )
-    except Exception:
-        pass
+    if getattr(rel, 'notify_invoice', True):
+        try:
+            other_currency = "ILS" if currency == "USD" else "USD"
+            conversion_note = (
+                build_conversion_note(data.amount, currency, other_currency)
+                if getattr(therapist, "show_conversion_note", False)
+                else None
+            )
+            send_invoice_email(
+                client_email=client.email, client_name=client.name,
+                therapist_name=therapist.name,
+                invoice_number=invoice.invoice_number, amount=data.amount,
+                due_date=due_date.strftime("%B %d, %Y"),
+                payment_link=invoice.payment_link,
+                session_date=data.service_date.strftime("%B %d, %Y") if data.service_date else None,
+                payment_instructions=therapist.payment_instructions,
+                currency=currency,
+                conversion_note=conversion_note,
+            )
+        except Exception:
+            pass
 
     issue_accounting_invoice(invoice, therapist, db)
 
@@ -349,26 +351,27 @@ def bill_now(
     db.commit()
     db.refresh(invoice)
 
-    try:
-        other_currency = "ILS" if currency == "USD" else "USD"
-        conversion_note = (
-            build_conversion_note(amount, currency, other_currency)
-            if getattr(therapist, "show_conversion_note", False)
-            else None
-        )
-        send_invoice_email(
-            client_email=appt.client.email, client_name=appt.client.name,
-            therapist_name=therapist.name,
-            invoice_number=invoice.invoice_number, amount=amount,
-            due_date=due_date.strftime("%B %d, %Y"),
-            payment_link=invoice.payment_link,
-            session_date=appt.start_time.strftime("%B %d, %Y"),
-            payment_instructions=therapist.payment_instructions,
-            currency=currency,
-            conversion_note=conversion_note,
-        )
-    except Exception:
-        pass
+    if getattr(rel, 'notify_invoice', True):
+        try:
+            other_currency = "ILS" if currency == "USD" else "USD"
+            conversion_note = (
+                build_conversion_note(amount, currency, other_currency)
+                if getattr(therapist, "show_conversion_note", False)
+                else None
+            )
+            send_invoice_email(
+                client_email=appt.client.email, client_name=appt.client.name,
+                therapist_name=therapist.name,
+                invoice_number=invoice.invoice_number, amount=amount,
+                due_date=due_date.strftime("%B %d, %Y"),
+                payment_link=invoice.payment_link,
+                session_date=appt.start_time.strftime("%B %d, %Y"),
+                payment_instructions=therapist.payment_instructions,
+                currency=currency,
+                conversion_note=conversion_note,
+            )
+        except Exception:
+            pass
 
     issue_accounting_invoice(invoice, therapist, db)
 

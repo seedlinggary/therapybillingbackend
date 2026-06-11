@@ -187,19 +187,19 @@ class ICountAccountingService(BaseAccountingService):
         method = (payload.payment_method or "cash").lower()
         pay_date = getattr(payload, "payment_date", None)
         if pay_date:
-            print(pay_date)
-            # body['paydate'] = pay_date
             body['paydate'] = pay_date
             body['hwc'] = f'Last payment was made on {pay_date}.'
         if method == "cash":
             body["cash"] = {"sum": amount_ils}
             if pay_date:
-                print(pay_date)
-                # body['paydate'] = pay_date
                 body["cash"]['paydate'] = pay_date
 
-        elif method == "bank_transfer":
+        elif method in ("bank_transfer", "bit", "paybox"):
             body["banktransfer"] = {"sum": amount_ils}
+
+        # elif method in ( "bit", "paybox"):
+        #     body["banktransfer"] = {"sum": amount_ils, "payment_date": pay_date, "card_brand": method, "card_number": ""
+        #                             "payer_name": payer_name,"payer_email": payer_email,"payer_phone": payer_phone,"payer_address": '','confirmation_code':"1234" }
         elif method in ("credit_card", "online"):
             body["cc"] = {"sum": amount_ils}
 

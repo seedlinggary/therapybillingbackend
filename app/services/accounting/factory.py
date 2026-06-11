@@ -61,9 +61,11 @@ def _build_israel_service(therapist, db: Session) -> BaseAccountingService:
 
         if integration.provider == "green_invoice":
             # company_id stores the API key ID; access_token_enc stores the secret
+            doc_type = getattr(integration, "green_invoice_doc_type", None) or "receipt"
             return GreenInvoiceAccountingService(
                 api_key_id=integration.company_id or "",
                 api_key_secret=api_key,
+                default_doc_type=doc_type,
             )
 
         # Default: iCount

@@ -59,7 +59,19 @@ _PAYMENT_TYPE = {
     "credit_card":   3,
     "bank_transfer": 4,
     "online":        4,   # Stripe / online → treat as bank transfer (collected externally)
+    "bit":           10,  # app payment
+    "paybox":        10,  # app payment
+    "paypal":        5,
 }
+
+# appType field required when payment type == 10 (app payment)
+_APP_TYPE = {
+    "bit":    1,
+    "paybox": 3,
+}
+
+# GI error codes that indicate the document type is not supported for this business type
+_DOC_TYPE_UNSUPPORTED_CODES = {2403, 2400, 2404}
 
 
 class GreenInvoiceAPIError(Exception):
@@ -83,9 +95,17 @@ class GreenInvoiceAPIError(Exception):
 
 class GreenInvoiceAccountingService(BaseAccountingService):
 
-    def __init__(self, api_key_id: str, api_key_secret: str):
+    def __init__(self, api_key_id: str, api_key_secret: str,
+                 default_doc_type: str = "receipt"):
+        """
+        default_doc_type: 'receipt' (400, safe default for all business types),
+                          'receipt_invoice' (320), or 'invoice' (305, requires עוסק מורשה).
+        The service will automatically fall back to 'receipt' (400) if the preferred type
+        fails with error code 2403 (type not supported for this business).
+        """
         self._key_id = api_key_id
         self._key_secret = api_key_secret
+        self._default_doc_type = default_doc_type
 
     # ── Auth ─────────────────────────────────────────────────────────────────
 
@@ -228,12 +248,15 @@ class GreenInvoiceAccountingService(BaseAccountingService):
 
         # Payment block — add for receipt types
         if doctype in (_DOCTYPE["receipt"], _DOCTYPE["receipt_invoice"]):
-            body["payment"] = [{
+            payment_entry: dict = {
                 "type": payment_type,
                 "price": amount_ils,
                 "currency": "ILS",
                 "date": pay_date,
-            }]
+            }
+            if method in _APP_TYPE:
+                payment_entry["appType"] = _APP_TYPE[method]
+            body["payment"] = [payment_entry]
 
         if payload.invoice_number:
             body["description"] = f"Invoice #{payload.invoice_number}"
@@ -243,6 +266,22 @@ class GreenInvoiceAccountingService(BaseAccountingService):
             body["linkedDocumentIds"] = [payload.original_external_id]
 
         return body
+
+    def _is_doc_type_error(self, exc: GreenInvoiceAPIError) -> bool:
+        """Return True if the error indicates the document type is unsupported."""
+        raw = exc.raw or {}
+        # Check numeric errorCode field
+        code = raw.get("errorCode") or raw.get("code") or 0
+        try:
+            if int(code) in _DOC_TYPE_UNSUPPORTED_CODES:
+                return True
+        except (ValueError, TypeError):
+            pass
+        # Also check for the Hebrew error message text
+        msg = str(exc).lower()
+        if "2403" in msg or "סוג מסמך" in str(exc) or "not supported" in msg:
+            return True
+        return False
 
     def _create_document(self, doctype: int, payload: DocumentPayload,
                          extra: Optional[dict] = None) -> AccountingResult:
@@ -264,6 +303,13 @@ class GreenInvoiceAccountingService(BaseAccountingService):
                 raw_response=result,
             )
         except GreenInvoiceAPIError as exc:
+            # If the doc type is not supported for this business type, fall back to receipt (400)
+            if self._is_doc_type_error(exc) and doctype != _DOCTYPE["receipt"]:
+                logger.warning(
+                    f"Green Invoice doctype={doctype} rejected (error: {exc}); "
+                    f"falling back to receipt (400)"
+                )
+                return self._create_document(_DOCTYPE["receipt"], payload, extra)
             detail = exc.full_detail()
             logger.error(f"Green Invoice create failed doctype={doctype}: {detail}")
             return AccountingResult(success=False, error=detail, raw_response=exc.raw)
@@ -275,13 +321,16 @@ class GreenInvoiceAccountingService(BaseAccountingService):
     # ── Public interface ──────────────────────────────────────────────────────
 
     def create_invoice(self, payload: DocumentPayload) -> AccountingResult:
-        return self._create_document(_DOCTYPE["invoice"], payload)
+        doctype = _DOCTYPE.get(self._default_doc_type, _DOCTYPE["receipt"])
+        return self._create_document(doctype, payload)
 
     def create_receipt(self, payload: DocumentPayload) -> AccountingResult:
+        # Always issue a plain receipt (400); fallback already handled in _create_document
         return self._create_document(_DOCTYPE["receipt"], payload)
 
     def create_receipt_invoice(self, payload: DocumentPayload) -> AccountingResult:
-        return self._create_document(_DOCTYPE["receipt_invoice"], payload)
+        doctype = _DOCTYPE.get(self._default_doc_type, _DOCTYPE["receipt"])
+        return self._create_document(doctype, payload)
 
     def create_credit_note(self, payload: DocumentPayload) -> AccountingResult:
         return self._create_document(_DOCTYPE["credit_note"], payload)

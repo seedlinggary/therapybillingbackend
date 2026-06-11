@@ -27,6 +27,7 @@ from app.schemas.accounting import (
     AccountingConnectRequest, AccountingIntegrationStatus,
     AccountingDocumentOut, ManualReceiptRequest,
     AuditLogOut, MonthlyReportOut, MonthlyReportRow,
+    AccountingDocTypeUpdate,
 )
 from app.services.accounting import get_accounting_service
 from app.services.accounting.base import DocumentPayload
@@ -111,6 +112,8 @@ def connect_accounting(
         existing.company_id = body.company_id
         existing.is_active = True
         existing.updated_at = datetime.utcnow()
+        if body.green_invoice_doc_type:
+            existing.green_invoice_doc_type = body.green_invoice_doc_type
         integration = existing
     else:
         integration = AccountingIntegration(
@@ -120,6 +123,7 @@ def connect_accounting(
             access_token_enc=encrypt_token(body.api_key),
             username_enc=encrypt_token(body.username),
             is_active=True,
+            green_invoice_doc_type=body.green_invoice_doc_type or None,
         )
         db.add(integration)
 
@@ -131,6 +135,34 @@ def connect_accounting(
     db.commit()
 
     logger.info(f"Therapist {therapist.id} connected {body.provider}")
+    return integration
+
+
+@router.patch("/doc-type", response_model=AccountingIntegrationStatus)
+def update_doc_type(
+    body: AccountingDocTypeUpdate,
+    therapist=Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """Update the GreenInvoice document type for the active integration."""
+    valid = {"receipt", "receipt_invoice", "invoice"}
+    if body.green_invoice_doc_type not in valid:
+        raise HTTPException(status_code=400, detail=f"doc_type must be one of: {', '.join(valid)}")
+    integration = (
+        db.query(AccountingIntegration)
+        .filter(
+            AccountingIntegration.therapist_id == therapist.id,
+            AccountingIntegration.provider == "green_invoice",
+            AccountingIntegration.is_active == True,
+        )
+        .first()
+    )
+    if not integration:
+        raise HTTPException(status_code=404, detail="No active Green Invoice integration found")
+    integration.green_invoice_doc_type = body.green_invoice_doc_type
+    integration.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(integration)
     return integration
 
 

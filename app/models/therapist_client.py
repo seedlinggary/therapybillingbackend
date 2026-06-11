@@ -33,6 +33,12 @@ class TherapistClient(Base):
     # Tax / VAT — when True, iCount documents are issued at 0% VAT for this client
     tax_exempt = Column(Boolean, nullable=False, server_default='false')
 
+    # Per-client email notification preferences
+    notify_appointment = Column(Boolean, nullable=False, server_default='true')
+    notify_invoice = Column(Boolean, nullable=False, server_default='true')
+    notify_receipt = Column(Boolean, nullable=False, server_default='true')
+    notify_reminder = Column(Boolean, nullable=False, server_default='true')
+
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 

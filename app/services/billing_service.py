@@ -81,28 +81,29 @@ def create_appointment_invoice(
 
     issue_accounting_invoice(invoice, therapist, db)
 
-    try:
-        other_currency = "ILS" if currency == "USD" else "USD"
-        conversion_note = (
-            build_conversion_note(amount, currency, other_currency)
-            if getattr(therapist, "show_conversion_note", False)
-            else None
-        )
-        send_invoice_email(
-            client_email=appt.client.email,
-            client_name=appt.client.name,
-            therapist_name=therapist.name,
-            invoice_number=invoice.invoice_number,
-            amount=amount,
-            due_date=due_date.strftime("%B %d, %Y"),
-            payment_link=invoice.payment_link,
-            session_date=appt.start_time.strftime("%B %d, %Y"),
-            payment_instructions=therapist.payment_instructions,
-            currency=currency,
-            conversion_note=conversion_note,
-        )
-    except Exception as e:
-        logger.warning(f"Email failed for auto-billed invoice {invoice.id}: {e}")
+    if getattr(rel, 'notify_invoice', True):
+        try:
+            other_currency = "ILS" if currency == "USD" else "USD"
+            conversion_note = (
+                build_conversion_note(amount, currency, other_currency)
+                if getattr(therapist, "show_conversion_note", False)
+                else None
+            )
+            send_invoice_email(
+                client_email=appt.client.email,
+                client_name=appt.client.name,
+                therapist_name=therapist.name,
+                invoice_number=invoice.invoice_number,
+                amount=amount,
+                due_date=due_date.strftime("%B %d, %Y"),
+                payment_link=invoice.payment_link,
+                session_date=appt.start_time.strftime("%B %d, %Y"),
+                payment_instructions=therapist.payment_instructions,
+                currency=currency,
+                conversion_note=conversion_note,
+            )
+        except Exception as e:
+            logger.warning(f"Email failed for auto-billed invoice {invoice.id}: {e}")
 
     return invoice
 

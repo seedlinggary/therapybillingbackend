@@ -49,6 +49,8 @@ class Invoice(Base):
     pdf_path = Column(String(500))
     notes    = Column(Text)
 
+    reminder_sent_at = Column(DateTime(timezone=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 

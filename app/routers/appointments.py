@@ -28,11 +28,12 @@ from app.services.email_service import (
 router = APIRouter(tags=["appointments"])
 
 
-def _build_response(appt: Appointment, db: Session) -> AppointmentResponse:
-    rel = db.query(TherapistClient).filter(
-        TherapistClient.therapist_id == appt.therapist_id,
-        TherapistClient.client_id == appt.client_id,
-    ).first()
+def _build_response(appt: Appointment, db: Session, rel: TherapistClient = None) -> AppointmentResponse:
+    if rel is None:
+        rel = db.query(TherapistClient).filter(
+            TherapistClient.therapist_id == appt.therapist_id,
+            TherapistClient.client_id == appt.client_id,
+        ).first()
     has_override = appt.override_price is not None and float(appt.override_price) != 0
     if has_override:
         effective_price = float(appt.override_price)
@@ -131,19 +132,20 @@ def create_appointment(
     db.commit()
     db.refresh(appt)
 
-    try:
-        _tz = ZoneInfo(therapist.timezone or "America/New_York")
-        _s = (data.start_time if data.start_time.tzinfo else data.start_time.replace(tzinfo=dt_timezone.utc)).astimezone(_tz)
-        _e = (data.end_time   if data.end_time.tzinfo   else data.end_time.replace(tzinfo=dt_timezone.utc)).astimezone(_tz)
-        send_appointment_confirmation(
-            client_email=client.email, client_name=client.name,
-            therapist_name=therapist.name,
-            start_time=_s.strftime("%B %d, %Y at %-I:%M %p"),
-            end_time=_e.strftime("%-I:%M %p"),
-            session_type=data.session_type,
-        )
-    except Exception:
-        pass
+    if getattr(rel, 'notify_appointment', True):
+        try:
+            _tz = ZoneInfo(therapist.timezone or "America/New_York")
+            _s = (data.start_time if data.start_time.tzinfo else data.start_time.replace(tzinfo=dt_timezone.utc)).astimezone(_tz)
+            _e = (data.end_time   if data.end_time.tzinfo   else data.end_time.replace(tzinfo=dt_timezone.utc)).astimezone(_tz)
+            send_appointment_confirmation(
+                client_email=client.email, client_name=client.name,
+                therapist_name=therapist.name,
+                start_time=_s.strftime("%B %d, %Y at %-I:%M %p"),
+                end_time=_e.strftime("%-I:%M %p"),
+                session_type=data.session_type,
+            )
+        except Exception:
+            pass
 
     db.refresh(appt)
     appt.client = client
@@ -239,29 +241,29 @@ def create_recurring_appointments(
         appt.client = client
         appt.therapist = therapist
 
-    # One summary email for the whole series
-    try:
-        first = appointments[0].start_time
-        last  = appointments[-1].start_time
-        tz    = ZoneInfo(therapist.timezone or "America/New_York")
-        day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
-        day_name  = day_names[first.astimezone(tz).weekday()]
-        time_str  = first.astimezone(tz).strftime("%-I:%M %p")
-        end_str   = last.astimezone(tz).strftime("%B %d, %Y") if data.end_date else "ongoing"
-        send_recurring_appointment_confirmation(
-            client_email=client.email,
-            client_name=client.name,
-            therapist_name=therapist.name,
-            recurrence_type=data.recurrence_type,
-            start_date=first.astimezone(tz).strftime("%B %d, %Y"),
-            end_date=end_str,
-            session_count=len(appointments),
-            day_of_week=day_name,
-            time_of_day=time_str,
-            session_type=data.session_type or "therapy",
-        )
-    except Exception:
-        pass
+    if getattr(rel, 'notify_appointment', True):
+        try:
+            first = appointments[0].start_time
+            last  = appointments[-1].start_time
+            tz    = ZoneInfo(therapist.timezone or "America/New_York")
+            day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+            day_name  = day_names[first.astimezone(tz).weekday()]
+            time_str  = first.astimezone(tz).strftime("%-I:%M %p")
+            end_str   = last.astimezone(tz).strftime("%B %d, %Y") if data.end_date else "ongoing"
+            send_recurring_appointment_confirmation(
+                client_email=client.email,
+                client_name=client.name,
+                therapist_name=therapist.name,
+                recurrence_type=data.recurrence_type,
+                start_date=first.astimezone(tz).strftime("%B %d, %Y"),
+                end_date=end_str,
+                session_count=len(appointments),
+                day_of_week=day_name,
+                time_of_day=time_str,
+                session_type=data.session_type or "therapy",
+            )
+        except Exception:
+            pass
 
     return [_build_response(a, db) for a in appointments]
 
@@ -325,7 +327,18 @@ def list_appointments(
         q = q.filter(Appointment.start_time <= to_date)
 
     appts = q.order_by(Appointment.start_time.desc()).all()
-    return [_build_response(a, db) for a in appts]
+
+    # Batch-load TherapistClient rels to avoid N+1
+    client_ids = list({str(a.client_id) for a in appts})
+    rels_by_client: dict = {}
+    if client_ids:
+        batch_rels = db.query(TherapistClient).filter(
+            TherapistClient.therapist_id == therapist.id,
+            TherapistClient.client_id.in_(client_ids),
+        ).all()
+        rels_by_client = {str(r.client_id): r for r in batch_rels}
+
+    return [_build_response(a, db, rel=rels_by_client.get(str(a.client_id))) for a in appts]
 
 
 @router.get("/therapist/appointments/{appointment_id}", response_model=AppointmentResponse)
@@ -484,7 +497,17 @@ def client_list_appointments(
         q = q.filter(Appointment.status == status)
 
     appts = q.order_by(Appointment.start_time.desc()).all()
-    return [_build_response(a, db) for a in appts]
+
+    therapist_ids = list({str(a.therapist_id) for a in appts})
+    rels_by_therapist: dict = {}
+    if therapist_ids:
+        batch_rels = db.query(TherapistClient).filter(
+            TherapistClient.client_id == client.id,
+            TherapistClient.therapist_id.in_(therapist_ids),
+        ).all()
+        rels_by_therapist = {str(r.therapist_id): r for r in batch_rels}
+
+    return [_build_response(a, db, rel=rels_by_therapist.get(str(a.therapist_id))) for a in appts]
 
 
 @router.get("/client/appointments/{appointment_id}", response_model=AppointmentResponse)

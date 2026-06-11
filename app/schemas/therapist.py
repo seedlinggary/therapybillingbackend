@@ -29,6 +29,8 @@ class TherapistProfile(BaseModel):
     paypal_connected: bool = False
     show_conversion_note: bool = False
     reminder_frequency_days: Optional[int] = None
+    reminder_repeat: bool = True
+    dashboard_note: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -55,6 +57,8 @@ class TherapistUpdate(BaseModel):
     paypal_connected: Optional[bool] = None
     show_conversion_note: Optional[bool] = None
     reminder_frequency_days: Optional[int] = None
+    reminder_repeat: Optional[bool] = None
+    dashboard_note: Optional[str] = None
 
 
 class TherapistOnboardingStatus(BaseModel):
