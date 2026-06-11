@@ -166,6 +166,30 @@ def update_doc_type(
     return integration
 
 
+@router.patch("/set-active")
+def set_active_provider(
+    provider: str = Query(...),
+    therapist=Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """Switch the active accounting provider by bumping its updated_at timestamp."""
+    integration = (
+        db.query(AccountingIntegration)
+        .filter(
+            AccountingIntegration.therapist_id == therapist.id,
+            AccountingIntegration.provider == provider,
+            AccountingIntegration.is_active == True,
+        )
+        .first()
+    )
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integration not found or not connected")
+    integration.updated_at = datetime.utcnow()
+    db.commit()
+    logger.info(f"Therapist {therapist.id} switched active accounting provider to {provider}")
+    return {"ok": True, "active_provider": provider}
+
+
 @router.delete("/disconnect")
 def disconnect_accounting(
     provider: str = Query(...),
