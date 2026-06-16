@@ -7,7 +7,7 @@ router = APIRouter(tags=["contact"])
 
 resend.api_key = settings.RESEND_API_KEY
 
-CONTACT_EMAIL = "gary.s.schwartz617@gmail.com"
+CONTACT_EMAIL = "seedling.gary@gmail.com"
 
 
 class ContactForm(BaseModel):
