@@ -56,7 +56,16 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> List[str]:
-        return [o.strip() for o in self.CORS_ORIGINS.split(",")]
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    def resolve_frontend_url(self, candidate: str) -> str:
+        """Return candidate origin if it is an allowed frontend URL, else fall back to FRONTEND_URL.
+        Used so OAuth callbacks redirect the user back to whichever frontend domain they came from."""
+        candidate = candidate.rstrip("/")
+        for allowed in self.cors_origins_list:
+            if candidate == allowed.rstrip("/"):
+                return allowed.rstrip("/")
+        return self.FRONTEND_URL
 
     class Config:
         env_file = ".env"

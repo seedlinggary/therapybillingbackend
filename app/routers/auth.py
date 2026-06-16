@@ -27,12 +27,15 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # ─── Therapist: Google OAuth ──────────────────────────────────────────────────
 
 @router.get("/google/login")
-def google_login():
+def google_login(request: Request):
+    origin = request.headers.get("origin", "")
+    frontend_url = settings.resolve_frontend_url(origin) if origin else settings.FRONTEND_URL
     flow = get_therapist_login_flow()
     auth_url, _ = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
         prompt="select_account",
+        state=frontend_url,   # carry the calling frontend's origin through the OAuth round-trip
     )
     return {"auth_url": auth_url}
 
@@ -41,21 +44,23 @@ def google_login():
 def google_callback(
     code: str,
     db: Session = Depends(get_db),
-    state: str = None,   # Google always sends state; accept it to avoid 422
+    state: str = None,   # contains the frontend URL we set in google_login
     error: str = None,   # Google sends error= on denial
 ):
+    frontend_url = settings.resolve_frontend_url(state or "")
+
     if error:
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error={error}")
+        return RedirectResponse(url=f"{frontend_url}/login?error={error}")
 
     try:
         token_data = exchange_code(code, settings.GOOGLE_REDIRECT_URI)
     except Exception as e:
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=oauth_failed")
+        return RedirectResponse(url=f"{frontend_url}/login?error=oauth_failed")
 
     try:
         user_info = get_user_info(token_data["access_token"])
     except Exception:
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=userinfo_failed")
+        return RedirectResponse(url=f"{frontend_url}/login?error=userinfo_failed")
 
     google_sub = user_info["id"]
     email = user_info["email"]
@@ -89,7 +94,7 @@ def google_callback(
 
     # New therapists → onboarding; returning therapists → dashboard
     redirect_url = (
-        f"{settings.FRONTEND_URL}/auth/callback"
+        f"{frontend_url}/auth/callback"
         f"?access_token={access_token}"
         f"&refresh_token={refresh_token}"
         f"&role=therapist"

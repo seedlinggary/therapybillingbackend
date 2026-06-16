@@ -4,7 +4,7 @@ Therapist onboarding — Google Calendar + Stripe Connect.
 import secrets
 import logging
 import stripe
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -56,13 +56,15 @@ def get_onboarding_status(therapist: Therapist = Depends(get_current_therapist))
 # ─── Google Calendar OAuth ───────────────────────────────────────────────────
 
 @router.get("/google-calendar/connect")
-def connect_google_calendar(therapist: Therapist = Depends(get_current_therapist)):
+def connect_google_calendar(request: Request, therapist: Therapist = Depends(get_current_therapist)):
+    origin = request.headers.get("origin", "")
+    frontend_url = settings.resolve_frontend_url(origin) if origin else settings.FRONTEND_URL
     flow = get_calendar_flow()
     auth_url, _ = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="false",
         prompt="consent",
-        state=str(therapist.id),
+        state=f"{therapist.id}|{frontend_url}",
     )
     return {"auth_url": auth_url}
 
@@ -74,13 +76,17 @@ def google_calendar_callback(
     db: Session = Depends(get_db),
     error: str = None,
 ):
+    # state format: "therapist_id|frontend_url"
+    therapist_id, _, encoded_url = state.partition("|")
+    frontend_url = settings.resolve_frontend_url(encoded_url)
+
     if error:
         logger.warning(f"Google Calendar OAuth denied: {error}")
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/therapist/onboarding?error=calendar_denied")
+        return RedirectResponse(url=f"{frontend_url}/therapist/onboarding?error=calendar_denied")
 
-    therapist = db.query(Therapist).filter(Therapist.id == state).first()
+    therapist = db.query(Therapist).filter(Therapist.id == therapist_id).first()
     if not therapist:
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/therapist/onboarding?error=invalid_state")
+        return RedirectResponse(url=f"{frontend_url}/therapist/onboarding?error=invalid_state")
 
     try:
         token_data = exchange_code(code, settings.GOOGLE_CALENDAR_REDIRECT_URI)
@@ -90,7 +96,7 @@ def google_calendar_callback(
         )
     except Exception as e:
         logger.error(f"Calendar token exchange failed: {e}")
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/therapist/onboarding?error=calendar_token_failed")
+        return RedirectResponse(url=f"{frontend_url}/therapist/onboarding?error=calendar_token_failed")
 
     calendar_id = "primary"
     try:
@@ -100,9 +106,7 @@ def google_calendar_callback(
     except Exception as e:
         logger.error(f"calendarList lookup failed (Calendar API may not be enabled): {e}")
         error_hint = "calendar_api_disabled" if "accessNotConfigured" in str(e) else "calendar_api_error"
-        return RedirectResponse(
-            url=f"{settings.FRONTEND_URL}/therapist/onboarding?error={error_hint}"
-        )
+        return RedirectResponse(url=f"{frontend_url}/therapist/onboarding?error={error_hint}")
 
     therapist.google_access_token_enc = encrypt_token(credentials.token)
     therapist.google_refresh_token_enc = encrypt_token(credentials.refresh_token)
@@ -112,45 +116,51 @@ def google_calendar_callback(
     _check_onboarding_complete(therapist)
     db.commit()
 
-    return RedirectResponse(url=f"{settings.FRONTEND_URL}/therapist/onboarding?step=stripe")
+    return RedirectResponse(url=f"{frontend_url}/therapist/onboarding?step=stripe")
 
 
 # ─── Stripe Connect OAuth ────────────────────────────────────────────────────
 
 @router.get("/stripe/connect")
-def connect_stripe(therapist: Therapist = Depends(get_current_therapist)):
-    # Use therapist ID as state so the callback can look up the correct row
-    connect_url = get_stripe_connect_url(str(therapist.id), str(therapist.id))
+def connect_stripe(request: Request, therapist: Therapist = Depends(get_current_therapist)):
+    origin = request.headers.get("origin", "")
+    frontend_url = settings.resolve_frontend_url(origin) if origin else settings.FRONTEND_URL
+    # state format: "therapist_id|frontend_url"
+    connect_url = get_stripe_connect_url(str(therapist.id), f"{therapist.id}|{frontend_url}")
     return {"auth_url": connect_url}
 
 
 @router.get("/stripe/callback")
 def stripe_callback(code: str, db: Session = Depends(get_db), state: str = None):
+    # state format: "therapist_id|frontend_url"
+    therapist_id, _, encoded_url = (state or "").partition("|")
+    frontend_url = settings.resolve_frontend_url(encoded_url)
+
     try:
         response = exchange_stripe_code(code)
     except Exception as e:
         logger.error(f"Stripe OAuth failed: {e}")
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/therapist/onboarding?error=stripe_failed")
+        return RedirectResponse(url=f"{frontend_url}/therapist/onboarding?error=stripe_failed")
 
     stripe_account_id = response.get("stripe_user_id")
     if not stripe_account_id:
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/therapist/onboarding?error=stripe_failed")
+        return RedirectResponse(url=f"{frontend_url}/therapist/onboarding?error=stripe_failed")
 
-    therapist = db.query(Therapist).filter(Therapist.id == state).first() if state else None
+    therapist = db.query(Therapist).filter(Therapist.id == therapist_id).first() if therapist_id else None
     if not therapist:
         logger.error(f"Stripe callback: no therapist found for state={state!r}")
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/therapist/onboarding?error=stripe_failed")
+        return RedirectResponse(url=f"{frontend_url}/therapist/onboarding?error=stripe_failed")
 
     # Idempotent: already connected with the same account — just redirect
     if therapist.stripe_account_id == stripe_account_id:
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/therapist/onboarding?step=complete")
+        return RedirectResponse(url=f"{frontend_url}/therapist/onboarding?step=complete")
 
     therapist.stripe_account_id = stripe_account_id
     therapist.stripe_connected = True
     _check_onboarding_complete(therapist)
     db.commit()
 
-    return RedirectResponse(url=f"{settings.FRONTEND_URL}/therapist/onboarding?step=complete")
+    return RedirectResponse(url=f"{frontend_url}/therapist/onboarding?step=complete")
 
 
 class ManualStripeConnectRequest(BaseModel):
