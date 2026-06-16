@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="PracticeBilling API",
+    title="AutoInvoice API",
     version="1.0.0",
     description="Scheduling and billing platform for any practice or business",
 )

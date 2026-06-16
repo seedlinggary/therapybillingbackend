@@ -17,7 +17,7 @@ def _send(to: str, subject: str, html: str):
 def send_client_invite(client_email: str, client_name: str, therapist_name: str, invite_token: str):
     activate_url = f"{settings.FRONTEND_URL}/activate?token={invite_token}"
     html = f"""
-    <h2>You've been invited to PracticeBilling</h2>
+    <h2>You've been invited to AutoInvoice</h2>
     <p>Hi {client_name},</p>
     <p><strong>{therapist_name}</strong> has added you as a client.</p>
     <p>Click below to set up your account and view your appointments and invoices:</p>

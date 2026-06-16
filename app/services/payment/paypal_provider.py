@@ -77,7 +77,7 @@ class PayPalProvider(BasePaymentProvider):
             "application_context": {
                 "return_url": data.success_url,
                 "cancel_url": data.cancel_url,
-                "brand_name": "PracticeBilling",
+                "brand_name": "AutoInvoice",
                 "landing_page": "LOGIN",
                 "shipping_preference": "NO_SHIPPING",
                 "user_action": "PAY_NOW",

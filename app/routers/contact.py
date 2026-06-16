@@ -21,7 +21,7 @@ class ContactForm(BaseModel):
 def submit_contact(data: ContactForm):
     try:
         html = f"""
-        <h2>New contact form submission — PracticeBilling</h2>
+        <h2>New contact form submission — AutoInvoice</h2>
         <table style="border-collapse:collapse;width:100%;max-width:600px">
           <tr><td style="padding:8px 0;font-weight:bold;color:#374151;width:120px">From</td>
               <td style="padding:8px 0;color:#111827">{data.name} &lt;{data.email}&gt;</td></tr>
@@ -37,10 +37,10 @@ def submit_contact(data: ContactForm):
         </p>
         """
         resend.Emails.send({
-            "from": f"PracticeBilling Contact <{settings.EMAIL_FROM}>",
+            "from": f"AutoInvoice Contact <{settings.EMAIL_FROM}>",
             "to": CONTACT_EMAIL,
             "reply_to": data.email,
-            "subject": f"[PracticeBilling] {data.subject} — from {data.name}",
+            "subject": f"[AutoInvoice] {data.subject} — from {data.name}",
             "html": html,
         })
     except Exception as e:

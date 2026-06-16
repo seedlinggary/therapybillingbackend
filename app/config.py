@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     # Email
     RESEND_API_KEY: str
     EMAIL_FROM: str = "noreply@therapybilling.app"
-    EMAIL_FROM_NAME: str = "PracticeBilling"
+    EMAIL_FROM_NAME: str = "AutoInvoice"
 
     # Encryption
     ENCRYPTION_KEY: str  # Fernet key for encrypting OAuth tokens at rest
