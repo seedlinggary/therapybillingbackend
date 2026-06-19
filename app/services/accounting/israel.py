@@ -172,14 +172,19 @@ class ICountAccountingService(BaseAccountingService):
         if effective_vat == 0:
             line_item["tax_exempt"] = 1  # iCount VAT field: percentage value (0 = exempt)
 
+        # Receipts default to sending email; invoices default to not sending
+        _receipt_types = {_DOCTYPE["receipt"], _DOCTYPE["receipt_invoice"]}
+        default_send = doctype in _receipt_types
+        do_send = payload.send_email if payload.send_email is not None else default_send
+
         body: dict = {
             "doctype":         doctype,
             "client_name":     payload.client_name,
             "email":           payload.client_email,
             "currency_code":   "ILS",
             "lang":            "he",
-            "send_email":      1,
-            "email_to_client": 1,
+            "send_email":      1 if do_send else 0,
+            "email_to_client": 1 if do_send else 0,
             "items":           [line_item],
         }
 

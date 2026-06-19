@@ -1,17 +1,21 @@
+import logging
 import resend
 from app.config import settings
 from typing import Optional
 
 resend.api_key = settings.RESEND_API_KEY
+logger = logging.getLogger(__name__)
 
 
 def _send(to: str, subject: str, html: str):
-    resend.Emails.send({
+    logger.info(f"Sending email to={to} subject={subject!r}")
+    result = resend.Emails.send({
         "from": f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>",
         "to": to,
         "subject": subject,
         "html": html,
     })
+    logger.info(f"Email sent to={to} resend_id={getattr(result, 'id', result)}")
 
 
 def send_client_invite(client_email: str, client_name: str, therapist_name: str, invite_token: str):
@@ -176,6 +180,57 @@ def send_invoice_email(
     <p style="margin-top:16px">You can also view and download your invoices at <a href="{settings.FRONTEND_URL}/client/invoices">your dashboard</a>.</p>
     """
     _send(client_email, f"Invoice #{invoice_number} from {therapist_name} - {symbol}{amount:.2f}", html)
+
+
+def send_receipt_email(
+    client_email: str,
+    client_name: str,
+    therapist_name: str,
+    invoice_number: str,
+    amount: float,
+    paid_at: str,
+    payment_method: Optional[str] = None,
+    currency: str = "USD",
+    pdf_bytes: Optional[bytes] = None,
+):
+    symbol = "₪" if currency == "ILS" else "$"
+    method_label = {
+        "online": "Online / Card",
+        "credit_card": "Credit Card",
+        "cash": "Cash",
+        "check": "Check",
+        "bank_transfer": "Bank Transfer",
+        "bit": "Bit",
+        "paybox": "PayBox",
+        "paypal": "PayPal",
+    }.get((payment_method or "online").lower(), payment_method or "Online")
+
+    html = f"""
+    <h2>Payment Receipt — Invoice #{invoice_number}</h2>
+    <p>Hi {client_name},</p>
+    <p>Thank you! Your payment to <strong>{therapist_name}</strong> has been received.</p>
+    <table style="border-collapse:collapse;width:100%;max-width:400px;margin:16px 0">
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Invoice #</strong></td><td style="padding:8px;border:1px solid #e5e7eb">{invoice_number}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Amount Paid</strong></td><td style="padding:8px;border:1px solid #e5e7eb">{symbol}{amount:.2f}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Payment Method</strong></td><td style="padding:8px;border:1px solid #e5e7eb">{method_label}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #e5e7eb"><strong>Date</strong></td><td style="padding:8px;border:1px solid #e5e7eb">{paid_at}</td></tr>
+    </table>
+    <p style="color:#16a34a;font-weight:600">✓ Payment confirmed</p>
+    <p style="margin-top:16px">You can view your invoices at <a href="{settings.FRONTEND_URL}/client/invoices">your dashboard</a>.</p>
+    """
+
+    msg = {
+        "from": f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>",
+        "to": client_email,
+        "subject": f"Payment receipt — Invoice #{invoice_number} ({symbol}{amount:.2f})",
+        "html": html,
+    }
+    if pdf_bytes:
+        msg["attachments"] = [{"filename": f"receipt-{invoice_number}.pdf", "content": list(pdf_bytes)}]
+
+    logger.info(f"Sending email to={client_email} subject={msg['subject']!r}")
+    result = resend.Emails.send(msg)
+    logger.info(f"Email sent to={client_email} resend_id={getattr(result, 'id', result)}")
 
 
 def send_payment_reminder(

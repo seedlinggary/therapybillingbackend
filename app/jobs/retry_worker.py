@@ -120,6 +120,15 @@ def _process_job(db: Session, job: RetryJob):
 def _execute_job(job: RetryJob, therapist, db: Session):
     """Dispatch job to the appropriate service method."""
     p = job.payload
+
+    # Always use the therapist's CURRENT email preference so retries honour
+    # any setting changes made since the original failure.
+    receipt_jobs = {"create_receipt", "create_receipt_invoice"}
+    if job.job_type in receipt_jobs:
+        send_email = bool(getattr(therapist, "accounting_send_email_receipt", True))
+    else:
+        send_email = bool(getattr(therapist, "accounting_send_email_invoice", False))
+
     payload = DocumentPayload(
         client_name=p.get("client_name", ""),
         client_email=p.get("client_email", ""),
@@ -129,6 +138,7 @@ def _execute_job(job: RetryJob, therapist, db: Session):
         invoice_number=p.get("invoice_number", ""),
         payment_method=p.get("payment_method", "online"),
         original_external_id=p.get("original_external_id"),
+        send_email=send_email,
     )
 
     service = get_accounting_service(therapist, db)

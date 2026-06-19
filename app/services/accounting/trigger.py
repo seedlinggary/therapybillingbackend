@@ -74,6 +74,7 @@ def issue_accounting_invoice(invoice: Invoice, therapist: Therapist, db: Session
             payment_method="online",
             vat_rate=_client_vat_rate(invoice, db),
             exchange_rate=exchange_rate,
+            send_email=bool(getattr(therapist, "accounting_send_email_invoice", False)),
         )
 
         service = get_accounting_service(therapist, db)
@@ -153,6 +154,7 @@ def issue_accounting_receipt(invoice: Invoice, db: Session,
             vat_rate=_client_vat_rate(invoice, db) if country == "IL" else 0.0,
             exchange_rate=exchange_rate,
             payment_date=payment_date,
+            send_email=bool(getattr(therapist, "accounting_send_email_receipt", True)),
         )
 
         service = get_accounting_service(therapist, db)

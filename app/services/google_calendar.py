@@ -132,3 +132,48 @@ def delete_calendar_event(therapist: Therapist, db: Session, event_id: str):
     service = get_calendar_service(therapist, db)
     calendar_id = therapist.google_calendar_id or "primary"
     service.events().delete(calendarId=calendar_id, eventId=event_id, sendUpdates="all").execute()
+
+
+def list_external_events(therapist: Therapist, db: Session, time_min: str, time_max: str) -> list:
+    """Return non-therapy Google Calendar events in [time_min, time_max].
+
+    Events created by this app have 'Session ID:' in their description and are
+    excluded so therapy sessions don't appear twice on the calendar.
+    """
+    service = get_calendar_service(therapist, db)
+    calendar_id = therapist.google_calendar_id or "primary"
+
+    result = service.events().list(
+        calendarId=calendar_id,
+        timeMin=time_min,
+        timeMax=time_max,
+        singleEvents=True,
+        orderBy="startTime",
+        maxResults=250,
+    ).execute()
+
+    events = []
+    for item in result.get("items", []):
+        desc = item.get("description") or ""
+        if "Session ID:" in desc:
+            continue
+        status = item.get("status", "")
+        if status == "cancelled":
+            continue
+
+        start = item.get("start", {})
+        end = item.get("end", {})
+        start_str = start.get("dateTime") or start.get("date")
+        end_str = end.get("dateTime") or end.get("date")
+        if not start_str:
+            continue
+
+        events.append({
+            "id": item.get("id", ""),
+            "title": item.get("summary") or "(No title)",
+            "start": start_str,
+            "end": end_str or start_str,
+            "all_day": "dateTime" not in start,
+        })
+
+    return events

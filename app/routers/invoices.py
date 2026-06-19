@@ -1,14 +1,15 @@
 """
 Invoices — CRUD, PDF download, Stripe checkout, bill-now, delete, mark-paid.
 """
+import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 import stripe
 
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.core.deps import get_current_therapist, get_current_client
 from app.models.therapist import Therapist
 from app.models.client import Client
@@ -20,7 +21,7 @@ from app.models.payment import Payment
 from app.schemas.invoice import InvoiceResponse, InvoiceItemResponse, InvoiceCreate, MarkPaidRequest, StandaloneInvoiceCreate
 from app.services.stripe_service import generate_invoice_number
 from app.services.pdf_service import generate_invoice_pdf
-from app.services.email_service import send_invoice_email
+from app.services.email_service import send_invoice_email, send_receipt_email
 from app.services.exchange_rate import build_conversion_note
 from app.services.accounting.trigger import issue_accounting_receipt, issue_accounting_invoice
 from app.services.payment import get_payment_provider
@@ -29,6 +30,46 @@ from app.models.payme_metadata import PayMePaymentMetadata
 from app.config import settings
 
 router = APIRouter(tags=["invoices"])
+logger = logging.getLogger(__name__)
+
+
+def _bg_accounting_invoice(invoice_id: str, therapist_id: str) -> None:
+    """Background task: issue GI/iCount invoice with its own DB session (thread-safe)."""
+    db = SessionLocal()
+    try:
+        from app.models.therapist import Therapist as _Therapist
+        inv = db.query(Invoice).options(
+            joinedload(Invoice.client),
+            joinedload(Invoice.items).joinedload(InvoiceItem.appointment),
+            joinedload(Invoice.appointment),
+        ).filter(Invoice.id == invoice_id).first()
+        thr = db.query(_Therapist).filter(_Therapist.id == therapist_id).first()
+        if inv and thr:
+            issue_accounting_invoice(inv, thr, db)
+    except Exception as e:
+        logger.error(f"BG accounting invoice failed invoice={invoice_id}: {e}", exc_info=True)
+    finally:
+        db.close()
+
+
+def _bg_accounting_receipt(invoice_id: str, payment_method: str = "online",
+                           payment_date: Optional[str] = None) -> None:
+    """Background task: issue GI/iCount receipt with its own DB session (thread-safe)."""
+    db = SessionLocal()
+    try:
+        inv = db.query(Invoice).options(
+            joinedload(Invoice.client),
+            joinedload(Invoice.items).joinedload(InvoiceItem.appointment),
+            joinedload(Invoice.appointment),
+            joinedload(Invoice.therapist),
+        ).filter(Invoice.id == invoice_id).first()
+        if inv:
+            issue_accounting_receipt(inv, db, payment_method=payment_method,
+                                     payment_date=payment_date)
+    except Exception as e:
+        logger.error(f"BG accounting receipt failed invoice={invoice_id}: {e}", exc_info=True)
+    finally:
+        db.close()
 
 
 def _item_response(item: InvoiceItem) -> InvoiceItemResponse:
@@ -158,6 +199,7 @@ def _attach_payment_session(db: Session, invoice: Invoice, therapist: Therapist)
 @router.post("/therapist/invoices", response_model=InvoiceResponse, status_code=201)
 def create_invoice(
     data: InvoiceCreate,
+    background_tasks: BackgroundTasks,
     therapist: Therapist = Depends(get_current_therapist),
     db: Session = Depends(get_db),
 ):
@@ -203,7 +245,9 @@ def create_invoice(
     db.commit()
     db.refresh(invoice)
 
-    if getattr(rel, 'notify_invoice', True):
+    notify = getattr(rel, 'notify_invoice', True)
+    logger.info(f"Invoice email check: invoice={invoice.id} notify_invoice={notify} client_email={appt.client.email!r}")
+    if notify:
         try:
             other_currency = "ILS" if currency == "USD" else "USD"
             conversion_note = (
@@ -222,10 +266,12 @@ def create_invoice(
                 currency=currency,
                 conversion_note=conversion_note,
             )
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"Invoice email failed for invoice {invoice.id}: {_e}", exc_info=True)
+    else:
+        logger.info(f"Invoice email skipped: notify_invoice=False for invoice {invoice.id}")
 
-    issue_accounting_invoice(invoice, therapist, db)
+    background_tasks.add_task(_bg_accounting_invoice, str(invoice.id), str(therapist.id))
 
     return _build_response(_load_invoice(db).filter(Invoice.id == invoice.id).first())
 
@@ -235,6 +281,7 @@ def create_invoice(
 @router.post("/therapist/invoices/standalone", response_model=InvoiceResponse, status_code=201)
 def create_standalone_invoice(
     data: StandaloneInvoiceCreate,
+    background_tasks: BackgroundTasks,
     therapist: Therapist = Depends(get_current_therapist),
     db: Session = Depends(get_db),
 ):
@@ -290,10 +337,10 @@ def create_standalone_invoice(
                 currency=currency,
                 conversion_note=conversion_note,
             )
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"Invoice email failed for invoice {invoice.id}: {_e}", exc_info=True)
 
-    issue_accounting_invoice(invoice, therapist, db)
+    background_tasks.add_task(_bg_accounting_invoice, str(invoice.id), str(therapist.id))
 
     return _build_response(_load_invoice(db).filter(Invoice.id == invoice.id).first())
 
@@ -304,6 +351,7 @@ def create_standalone_invoice(
              response_model=InvoiceResponse, status_code=201)
 def bill_now(
     appointment_id: str,
+    background_tasks: BackgroundTasks,
     therapist: Therapist = Depends(get_current_therapist),
     db: Session = Depends(get_db),
 ):
@@ -351,7 +399,9 @@ def bill_now(
     db.commit()
     db.refresh(invoice)
 
-    if getattr(rel, 'notify_invoice', True):
+    notify = getattr(rel, 'notify_invoice', True)
+    logger.info(f"Invoice email check: invoice={invoice.id} notify_invoice={notify} client_email={appt.client.email!r}")
+    if notify:
         try:
             other_currency = "ILS" if currency == "USD" else "USD"
             conversion_note = (
@@ -370,10 +420,12 @@ def bill_now(
                 currency=currency,
                 conversion_note=conversion_note,
             )
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning(f"Invoice email failed for invoice {invoice.id}: {_e}", exc_info=True)
+    else:
+        logger.info(f"Invoice email skipped: notify_invoice=False for invoice {invoice.id}")
 
-    issue_accounting_invoice(invoice, therapist, db)
+    background_tasks.add_task(_bg_accounting_invoice, str(invoice.id), str(therapist.id))
 
     return _build_response(_load_invoice(db).filter(Invoice.id == invoice.id).first())
 
@@ -443,6 +495,7 @@ def delete_invoice(
 @router.post("/therapist/invoices/{invoice_id}/verify-stripe-payment", response_model=InvoiceResponse)
 def verify_stripe_payment(
     invoice_id: str,
+    background_tasks: BackgroundTasks,
     therapist: Therapist = Depends(get_current_therapist),
     db: Session = Depends(get_db),
 ):
@@ -494,7 +547,35 @@ def verify_stripe_payment(
             ))
 
     db.commit()
-    issue_accounting_receipt(invoice, db, payment_method="online")
+    background_tasks.add_task(_bg_accounting_receipt, str(invoice.id), "online")
+
+    rel = db.query(TherapistClient).filter(
+        TherapistClient.therapist_id == invoice.therapist_id,
+        TherapistClient.client_id == invoice.client_id,
+    ).first()
+    notify = getattr(rel, 'notify_receipt', True)
+    currency = getattr(invoice, 'currency', None) or 'USD'
+    logger.info(f"Receipt email check: invoice={invoice.id} notify_receipt={notify} client_email={invoice.client.email!r}")
+    if notify:
+        try:
+            full_inv = _load_invoice(db).filter(Invoice.id == invoice.id).first()
+            pdf = _invoice_pdf_bytes(full_inv)
+            send_receipt_email(
+                client_email=invoice.client.email,
+                client_name=invoice.client.name,
+                therapist_name=therapist.name,
+                invoice_number=invoice.invoice_number,
+                amount=float(invoice.amount),
+                paid_at=invoice.paid_at.strftime("%B %d, %Y"),
+                payment_method="online",
+                currency=currency,
+                pdf_bytes=pdf,
+            )
+        except Exception as _e:
+            logger.warning(f"Receipt email failed for invoice {invoice.id}: {_e}", exc_info=True)
+    else:
+        logger.info(f"Receipt email skipped: notify_receipt=False for invoice {invoice.id}")
+
     return _build_response(_load_invoice(db).filter(Invoice.id == invoice_id).first())
 
 
@@ -503,6 +584,7 @@ def verify_stripe_payment(
 @router.post("/therapist/invoices/{invoice_id}/mark-paid", response_model=InvoiceResponse)
 def mark_invoice_paid(
     invoice_id: str,
+    background_tasks: BackgroundTasks,
     body: MarkPaidRequest = None,
     therapist: Therapist = Depends(get_current_therapist),
     db: Session = Depends(get_db),
@@ -522,8 +604,36 @@ def mark_invoice_paid(
     invoice.paid_at = datetime.utcnow()
     db.commit()
     db.refresh(invoice)
-    issue_accounting_receipt(invoice, db, payment_method=req.payment_method,
-                             payment_date=req.payment_date)
+    background_tasks.add_task(_bg_accounting_receipt, str(invoice.id),
+                              req.payment_method, req.payment_date)
+
+    rel = db.query(TherapistClient).filter(
+        TherapistClient.therapist_id == invoice.therapist_id,
+        TherapistClient.client_id == invoice.client_id,
+    ).first()
+    notify = getattr(rel, 'notify_receipt', True)
+    currency = getattr(invoice, 'currency', None) or 'USD'
+    logger.info(f"Receipt email check: invoice={invoice.id} notify_receipt={notify} client_email={invoice.client.email!r}")
+    if notify:
+        try:
+            full_inv = _load_invoice(db).filter(Invoice.id == invoice.id).first()
+            pdf = _invoice_pdf_bytes(full_inv)
+            send_receipt_email(
+                client_email=invoice.client.email,
+                client_name=invoice.client.name,
+                therapist_name=invoice.therapist.name,
+                invoice_number=invoice.invoice_number,
+                amount=float(invoice.amount),
+                paid_at=invoice.paid_at.strftime("%B %d, %Y"),
+                payment_method=req.payment_method,
+                currency=currency,
+                pdf_bytes=pdf,
+            )
+        except Exception as _e:
+            logger.warning(f"Receipt email failed for invoice {invoice.id}: {_e}", exc_info=True)
+    else:
+        logger.info(f"Receipt email skipped: notify_receipt=False for invoice {invoice.id}")
+
     return _build_response(invoice)
 
 
@@ -623,6 +733,7 @@ def get_client_invoice(
 @router.post("/client/invoices/{invoice_id}/confirm-payment", response_model=InvoiceResponse)
 def confirm_payment(
     invoice_id: str,
+    background_tasks: BackgroundTasks,
     client: Client = Depends(get_current_client),
     db: Session = Depends(get_db),
 ):
@@ -675,7 +786,35 @@ def confirm_payment(
             ))
 
     db.commit()
-    issue_accounting_receipt(invoice, db, payment_method="online")
+    background_tasks.add_task(_bg_accounting_receipt, str(invoice.id), "online")
+
+    rel = db.query(TherapistClient).filter(
+        TherapistClient.therapist_id == invoice.therapist_id,
+        TherapistClient.client_id == invoice.client_id,
+    ).first()
+    notify = getattr(rel, 'notify_receipt', True)
+    currency = getattr(invoice, 'currency', None) or 'USD'
+    logger.info(f"Receipt email check: invoice={invoice.id} notify_receipt={notify} client_email={invoice.client.email!r}")
+    if notify:
+        try:
+            full_inv = _load_invoice(db).filter(Invoice.id == invoice.id).first()
+            pdf = _invoice_pdf_bytes(full_inv)
+            send_receipt_email(
+                client_email=invoice.client.email,
+                client_name=invoice.client.name,
+                therapist_name=therapist.name,
+                invoice_number=invoice.invoice_number,
+                amount=float(invoice.amount),
+                paid_at=invoice.paid_at.strftime("%B %d, %Y"),
+                payment_method="online",
+                currency=currency,
+                pdf_bytes=pdf,
+            )
+        except Exception as _e:
+            logger.warning(f"Receipt email failed for invoice {invoice.id}: {_e}", exc_info=True)
+    else:
+        logger.info(f"Receipt email skipped: notify_receipt=False for invoice {invoice.id}")
+
     return _build_response(_load_invoice(db).filter(Invoice.id == invoice_id).first())
 
 
@@ -727,6 +866,44 @@ def download_invoice_pdf_client(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return _generate_pdf_response(invoice)
+
+
+def _invoice_pdf_bytes(invoice: Invoice) -> bytes:
+    therapist = invoice.therapist
+    client = invoice.client
+    line_items = []
+    for item in invoice.items:
+        appt = item.appointment
+        line_items.append({
+            "description": item.description,
+            "date": appt.start_time.strftime("%B %d, %Y") if appt else "—",
+            "session_type": appt.session_type if appt else "",
+            "amount": float(item.amount),
+        })
+    if not line_items and invoice.appointment:
+        appt = invoice.appointment
+        line_items = [{
+            "description": "Therapy Session",
+            "date": appt.start_time.strftime("%B %d, %Y") if appt else "N/A",
+            "session_type": appt.session_type if appt else "Session",
+            "amount": float(invoice.amount),
+        }]
+    return generate_invoice_pdf(
+        invoice_number=invoice.invoice_number,
+        therapist_name=therapist.name,
+        therapist_email=therapist.email,
+        therapist_license=therapist.license_number,
+        client_name=client.name,
+        client_email=client.email,
+        line_items=line_items,
+        amount=float(invoice.amount),
+        status=invoice.status,
+        due_date=invoice.due_date.strftime("%B %d, %Y"),
+        paid_at=invoice.paid_at.strftime("%B %d, %Y") if invoice.paid_at else None,
+        invoice_id=str(invoice.id),
+        payment_instructions=therapist.payment_instructions,
+        currency=getattr(invoice, "currency", "USD") or "USD",
+    )
 
 
 def _generate_pdf_response(invoice: Invoice) -> Response:

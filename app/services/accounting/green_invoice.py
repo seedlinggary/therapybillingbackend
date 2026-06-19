@@ -70,9 +70,6 @@ _APP_TYPE = {
     "paybox": 3,
 }
 
-# GI error codes that indicate the document type is not supported for this business type
-_DOC_TYPE_UNSUPPORTED_CODES = {2403, 2400, 2404}
-
 
 class GreenInvoiceAPIError(Exception):
     def __init__(self, message: str, raw: Optional[dict] = None,
@@ -230,6 +227,11 @@ class GreenInvoiceAccountingService(BaseAccountingService):
         method = (payload.payment_method or "cash").lower()
         payment_type = _PAYMENT_TYPE.get(method, 4)
 
+        # Receipts default to sending email; invoices default to not sending
+        _receipt_types = {_DOCTYPE["receipt"], _DOCTYPE["receipt_invoice"]}
+        default_send = doctype in _receipt_types
+        do_send = payload.send_email if payload.send_email is not None else default_send
+        print(do_send, "!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         body: dict = {
             "type": doctype,
             "client": {
@@ -241,7 +243,7 @@ class GreenInvoiceAccountingService(BaseAccountingService):
             "vatType": doc_vat_type,
             "lang": "he",
             "signed": True,
-            "sendByEmail": True,
+            "sendByEmail": do_send,
             "rounding": False,
             "income": [income_item],
         }
@@ -267,24 +269,9 @@ class GreenInvoiceAccountingService(BaseAccountingService):
 
         return body
 
-    def _is_doc_type_error(self, exc: GreenInvoiceAPIError) -> bool:
-        """Return True if the error indicates the document type is unsupported."""
-        raw = exc.raw or {}
-        # Check numeric errorCode field
-        code = raw.get("errorCode") or raw.get("code") or 0
-        try:
-            if int(code) in _DOC_TYPE_UNSUPPORTED_CODES:
-                return True
-        except (ValueError, TypeError):
-            pass
-        # Also check for the Hebrew error message text
-        msg = str(exc).lower()
-        if "2403" in msg or "סוג מסמך" in str(exc) or "not supported" in msg:
-            return True
-        return False
-
     def _create_document(self, doctype: int, payload: DocumentPayload,
                          extra: Optional[dict] = None) -> AccountingResult:
+        """Issue a single GI document. No fallback logic — callers decide."""
         try:
             body = self._build_doc_payload(payload, doctype)
             if extra:
@@ -303,13 +290,6 @@ class GreenInvoiceAccountingService(BaseAccountingService):
                 raw_response=result,
             )
         except GreenInvoiceAPIError as exc:
-            # If the doc type is not supported for this business type, fall back to receipt (400)
-            if self._is_doc_type_error(exc) and doctype != _DOCTYPE["receipt"]:
-                logger.warning(
-                    f"Green Invoice doctype={doctype} rejected (error: {exc}); "
-                    f"falling back to receipt (400)"
-                )
-                return self._create_document(_DOCTYPE["receipt"], payload, extra)
             detail = exc.full_detail()
             logger.error(f"Green Invoice create failed doctype={doctype}: {detail}")
             return AccountingResult(success=False, error=detail, raw_response=exc.raw)
@@ -321,16 +301,35 @@ class GreenInvoiceAccountingService(BaseAccountingService):
     # ── Public interface ──────────────────────────────────────────────────────
 
     def create_invoice(self, payload: DocumentPayload) -> AccountingResult:
-        doctype = _DOCTYPE.get(self._default_doc_type, _DOCTYPE["receipt"])
-        return self._create_document(doctype, payload)
+        """
+        Issue חשבונית מס (305). No fallback — if it fails the retry worker retries
+        the same type rather than silently downgrading to a different document.
+        """
+        return self._create_document(_DOCTYPE["invoice"], payload)
 
     def create_receipt(self, payload: DocumentPayload) -> AccountingResult:
-        # Always issue a plain receipt (400); fallback already handled in _create_document
+        """
+        Issue קבלה (400), typically linked to an existing חשבונית מס via
+        payload.original_external_id. No fallback to receipt_invoice — that would
+        produce a duplicate combined document alongside the existing 305.
+        """
         return self._create_document(_DOCTYPE["receipt"], payload)
 
     def create_receipt_invoice(self, payload: DocumentPayload) -> AccountingResult:
-        doctype = _DOCTYPE.get(self._default_doc_type, _DOCTYPE["receipt"])
-        return self._create_document(doctype, payload)
+        """
+        Called when there is NO prior חשבונית מס for this invoice.
+        Try קבלה (400) first; if that fails fall back to חשבונית מס קבלה (320).
+        This is the only place a fallback is allowed, because no 305 exists yet
+        so issuing a 320 cannot create a duplicate.
+        """
+        result = self._create_document(_DOCTYPE["receipt"], payload)
+        if result.success:
+            return result
+        logger.warning(
+            "create_receipt_invoice: קבלה (400) failed, falling back to "
+            "חשבונית מס קבלה (320)"
+        )
+        return self._create_document(_DOCTYPE["receipt_invoice"], payload)
 
     def create_credit_note(self, payload: DocumentPayload) -> AccountingResult:
         return self._create_document(_DOCTYPE["credit_note"], payload)

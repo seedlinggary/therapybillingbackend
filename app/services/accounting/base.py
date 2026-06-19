@@ -31,6 +31,7 @@ class DocumentPayload:
     original_external_id: Optional[str] = None  # for credit notes
     exchange_rate: Optional[float] = None   # USD→ILS rate for IL therapists billing in USD
     payment_date: Optional[str] = None      # ISO date string YYYY-MM-DD; defaults to today if None
+    send_email: Optional[bool] = None       # None = use doc-type default (receipts→True, invoices→False)
 
 
 class BaseAccountingService(ABC):

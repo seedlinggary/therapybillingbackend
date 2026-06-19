@@ -119,6 +119,26 @@ def google_calendar_callback(
     return RedirectResponse(url=f"{frontend_url}/therapist/onboarding?step=stripe")
 
 
+@router.get("/google-calendar/events")
+def get_google_calendar_events(
+    start: str,
+    end: str,
+    therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """Return non-therapy Google Calendar events for the given ISO date range."""
+    if not therapist.google_calendar_connected:
+        return []
+    try:
+        from app.services.google_calendar import list_external_events
+        events = list_external_events(therapist, db, start, end)
+        logger.info(f"Google Calendar events fetched: count={len(events)} events={[e['title'] for e in events]}")
+        return events
+    except Exception as e:
+        logger.warning(f"Failed to fetch Google Calendar events for therapist {therapist.id}: {e}")
+        return []
+
+
 # ─── Stripe Connect OAuth ────────────────────────────────────────────────────
 
 @router.get("/stripe/connect")

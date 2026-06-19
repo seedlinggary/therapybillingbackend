@@ -30,6 +30,8 @@ class TherapistProfile(BaseModel):
     show_conversion_note: bool = False
     reminder_frequency_days: Optional[int] = None
     reminder_repeat: bool = True
+    accounting_send_email_invoice: bool = False
+    accounting_send_email_receipt: bool = True
     dashboard_note: Optional[str] = None
     created_at: datetime
 
@@ -58,6 +60,8 @@ class TherapistUpdate(BaseModel):
     show_conversion_note: Optional[bool] = None
     reminder_frequency_days: Optional[int] = None
     reminder_repeat: Optional[bool] = None
+    accounting_send_email_invoice: Optional[bool] = None
+    accounting_send_email_receipt: Optional[bool] = None
     dashboard_note: Optional[str] = None
 
 

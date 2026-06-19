@@ -68,6 +68,10 @@ class Therapist(Base):
     # True = keep sending every N days until paid; False = send once per client then stop
     reminder_repeat = Column(Boolean, nullable=False, server_default='true')
 
+    # Accounting email preferences — whether to send client emails for each doc type
+    accounting_send_email_invoice = Column(Boolean, nullable=False, server_default='false')
+    accounting_send_email_receipt = Column(Boolean, nullable=False, server_default='true')
+
     # Dashboard general note
     dashboard_note = Column(Text, nullable=True)
 
